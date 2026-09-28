@@ -1,3 +1,4 @@
+# Blueprint version: 1.0
 blueprint:
   name: Gerät nach Inaktivität ausschalten (leistungsbasiert)
   description: >
