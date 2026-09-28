@@ -1,12 +1,11 @@
 # Blueprint version: 1.0
 blueprint:
-  name: Gerät nach Inaktivität ausschalten (leistungsbasiert)
+  name: Device off after going idle (power monitored)
   description: >
-    Schaltet ein Gerät über einen Schalter aus, wenn dessen
-    Leistungsaufnahme für eine festgelegte Zeit unter einem
-    Schwellwert liegt – egal ob das Gerät nie aktiv war oder
-    ein Vorgang bereits beendet wurde. Reboot-fest durch einen
-    persistenten Timer-Helper.
+    Turns off a device via a switch when it's
+    power consumption is below a threshold for a set time - 
+    whether the device was never active or a process has already been completed. 
+    Reboot-safe by one persistent timer helper.
   domain: automation
   source_url: https://github.com/jubie25/blueprints/blob/main/automation/switch_off_device_when_idle/switch_off_device_when_idle.yaml
   input:
