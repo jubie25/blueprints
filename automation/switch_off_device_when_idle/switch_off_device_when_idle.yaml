@@ -7,7 +7,7 @@ blueprint:
     ein Vorgang bereits beendet wurde. Reboot-fest durch einen
     persistenten Timer-Helper.
   domain: automation
-  source_url: https://github.com/jubie25/blob/main/blueprints/automation/switch_off_devie_when_idle/switch_off_devie_when_idle.yaml
+  source_url: https://github.com/jubie25/blueprints/blob/main/automation/switch_off_device_when_idle/switch_off_device_when_idle.yaml
   input:
     device_switch:
       name: Schalter
