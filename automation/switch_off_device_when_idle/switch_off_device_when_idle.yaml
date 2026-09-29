@@ -2,6 +2,7 @@
 blueprint:
   name: Device off after going idle (power monitored)
   description: >
+    v1.1
     Turns off a device via a switch when it's
     power consumption is below a threshold for a set time - 
     whether the device was never active or a process has already been completed. 
