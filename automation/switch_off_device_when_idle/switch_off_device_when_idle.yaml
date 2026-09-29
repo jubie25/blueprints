@@ -82,7 +82,11 @@ triggers:
     event_data:
       entity_id: !input idle_timer
     id: timer_ab
-
+  - trigger: state
+    entity_id: !input device_switch
+    from: "unavailable"
+    id: reconnect
+    
 variables:
   device_switch: !input device_switch
   idle_timer: !input idle_timer
@@ -146,6 +150,24 @@ actions:
           - condition: state
             entity_id: !input device_switch
             state: "on"
+        sequence:
+          - action: switch.turn_off
+            target:
+              entity_id: !input device_switch
+              
+      # Gerät wieder erreichbar, Timer war zwischenzeitlich abgelaufen -> nachholen
+      - conditions:
+          - condition: trigger
+            id: reconnect
+          - condition: state
+            entity_id: !input device_switch
+            state: "on"
+          - condition: numeric_state
+            entity_id: !input power_sensor
+            below: !input power_threshold
+          - condition: state
+            entity_id: !input idle_timer
+            state: "idle"
         sequence:
           - action: switch.turn_off
             target:
