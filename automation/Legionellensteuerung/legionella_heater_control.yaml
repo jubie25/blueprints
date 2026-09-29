@@ -1,7 +1,7 @@
 blueprint:
-  name: Warmwasser Legionellenschaltung (v1.3.0)
+  name: Warmwasser Legionellenschaltung (v1.4.0)
   description: >
-    **Version: 1.3.0 (2026-09-27)**
+    **Version: 1.4.0 (2026-09-27)**
 
 
     Wöchentliche Legionellenschaltung: Ab der Startzeit wird auf einen
@@ -28,6 +28,15 @@ blueprint:
 
 
     **Änderungshistorie:**
+
+    - 1.4.0 (2026-09-27): Zwei Logikfehler bei der Kontrolle gefunden und
+      behoben: (1) Ein Tages-Timeout während Phase 1 wurde fälschlich als
+      abgeschlossener Wärmepumpenlauf gewertet, sobald irgendwann ein
+      Temperaturanstieg erkannt worden war, selbst wenn die Stabil-Zeit nie
+      erreicht wurde. (2) Startete Home Assistant neu, während der Heizstab
+      gerade erst eingeschaltet, seine Leistung aber noch nicht über die
+      Schwelle gestiegen war, wurde er nach dem Neustart sofort wieder
+      ausgeschaltet statt ihm die gewohnte 5-Minuten-Anlaufkulanz zu geben.
 
     - 1.3.0 (2026-09-27): Statusspeicher und Startzeitpunkt-Speicher zu
       einem einzigen input_datetime-Helfer zusammengelegt (der bisherige
@@ -239,7 +248,7 @@ blueprint:
 mode: single
 
 variables:
-  blueprint_version: "1.3.0"
+  blueprint_version: "1.4.0"
   speicher: !input speicher
   heizstab: !input heizstab
   heizstab_leistung: !input heizstab_leistung
@@ -340,16 +349,23 @@ actions:
                 neuer_hoechststand: "{{ aktuelle_temp > max_seit_start }}"
                 max_seit_start: "{{ [max_seit_start, aktuelle_temp] | max }}"
                 stabil_seit: "{{ now().timestamp() if neuer_hoechststand else stabil_seit }}"
+      # Nur wenn die Schleife wegen erreichter Stabilität endete (nicht wegen
+      # Tages-Timeout) gilt der Wärmepumpenlauf als abgeschlossen. Ein
+      # Timeout, bei dem zwar ein Anstieg erkannt, aber nie eine Stabil-Zeit
+      # erreicht wurde, zählt bewusst NICHT als abgeschlossen.
       - if:
           - condition: template
-            value_template: "{{ not heizung_erkannt }}"
+            value_template: >
+              {{ not (heizung_erkannt
+                      and (now().timestamp() - stabil_seit) >= ww_stabil_zeit_sek) }}
         then:
           - variables:
               titel: Legionellenschaltung
               nachricht: >
                 Heute kein abgeschlossener Wärmepumpen-Warmwasserlauf
-                erkannt (Speichertemperatur ist nicht um {{ ww_delta_start }}
-                °C gestiegen), Heizstab wurde nicht gestartet.
+                erkannt (entweder kein ausreichender Temperaturanstieg oder
+                keine anschließende Stabilisierung bis Tagesende), Heizstab
+                wurde nicht gestartet.
                 (Blueprint v{{ blueprint_version }})
           - repeat:
               count: 1
@@ -360,14 +376,19 @@ actions:
             data:
               datetime: "1970-01-01 00:00:00"
           - stop: "Timeout Wärmepumpen-Warmwasserlauf"
-      # Heizstab ein und warten, bis er tatsächlich heizt
+      # Heizstab einschalten
       - action: switch.turn_on
         target:
           entity_id: "{{ heizstab }}"
-      - wait_template: >
-          {{ states(heizstab_leistung) | float(0) > hs_start_schwelle | float }}
-        timeout: "00:05:00"
-        continue_on_timeout: true
+
+  # Anlauf-Kulanz: gilt sowohl nach frischem Einschalten oben als auch nach
+  # einem Neustart, bei dem der Heizstab bereits an ist, aber seine Leistung
+  # noch nicht über die Schwelle gestiegen ist (sonst würde Phase 2 unten
+  # fälschlich "schon fertig" annehmen und sofort wieder abschalten).
+  - wait_template: >
+      {{ states(heizstab_leistung) | float(0) > hs_start_schwelle | float }}
+    timeout: "00:05:00"
+    continue_on_timeout: true
 
   # Phase 2: warten, bis die Heizstab-Regelung abgeschaltet hat
   - if:
