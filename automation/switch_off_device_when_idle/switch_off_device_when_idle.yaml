@@ -1,33 +1,57 @@
-# Blueprint version: 1.1
+# Blueprint version: 1.1.0
+# Changelog:
+#   1.1.0 - Added retry loop and reconnect catch-up for switch
+#           communication errors (Shelly Wi-Fi dropouts)
+#   1.0.0 - Initial release
 blueprint:
-  name: Device off after going idle (power monitored)
+  name: "Turn off device after inactivity (power-based) v1.1.0 / Gerät nach Inaktivität ausschalten (leistungsbasiert) v1.1.0"
   description: >
-    v1.1
-    Turns off a device via a switch when it's
-    power consumption is below a threshold for a set time - 
-    whether the device was never active or a process has already been completed. 
-    Reboot-safe by one persistent timer helper.
+    Version: 1.1.0
+
+    EN: Turns off a device via its switch when its power draw has
+    stayed below a threshold for a defined time — whether the device
+    was never actually active, or an activity cycle has already
+    finished. Restart-safe thanks to a persistent timer helper.
+    Includes retry logic and a catch-up mechanism for communication
+    errors / connection loss to the switch (e.g. Shelly Wi-Fi dropouts).
+
+    DE: Schaltet ein Gerät über einen Schalter aus, wenn dessen
+    Leistungsaufnahme für eine festgelegte Zeit unter einem
+    Schwellwert liegt – egal ob das Gerät nie aktiv war oder ein
+    Vorgang bereits beendet wurde. Reboot-fest durch einen
+    persistenten Timer-Helfer. Enthält Retry-Logik und
+    Nachhol-Mechanismus für Kommunikationsfehler/Verbindungsverlust
+    zum Schalter (z. B. bei Shelly-WLAN-Aussetzern).
   domain: automation
   source_url: https://github.com/jubie25/blueprints/blob/main/automation/switch_off_device_when_idle/switch_off_device_when_idle.yaml
   input:
     device_switch:
-      name: Schalter
-      description: Schalter, der das Gerät steuert (z. B. Shelly)
+      name: "Switch / Schalter"
+      description: >
+        EN: Switch that controls the device (e.g. a Shelly).
+
+        DE: Schalter, der das Gerät steuert (z. B. Shelly).
       selector:
         entity:
           domain: switch
 
     power_sensor:
-      name: Leistungssensor
-      description: Sensor, der die aktuelle Leistungsaufnahme misst
+      name: "Power sensor / Leistungssensor"
+      description: >
+        EN: Sensor that measures the current power draw.
+
+        DE: Sensor, der die aktuelle Leistungsaufnahme misst.
       selector:
         entity:
           domain: sensor
           device_class: power
 
     power_threshold:
-      name: Schwellwert (Watt)
-      description: Leistung unterhalb dieses Werts gilt als "inaktiv"
+      name: "Threshold (watts) / Schwellwert (Watt)"
+      description: >
+        EN: Power below this value counts as "idle".
+
+        DE: Leistung unterhalb dieses Werts gilt als "inaktiv".
       default: 3
       selector:
         number:
@@ -37,18 +61,26 @@ blueprint:
           mode: box
 
     idle_timeout:
-      name: Inaktivitäts-Dauer
-      description: Zeit ohne Aktivität, nach der ausgeschaltet wird
+      name: "Idle duration / Inaktivitäts-Dauer"
+      description: >
+        EN: Time without activity after which the device is turned off.
+
+        DE: Zeit ohne Aktivität, nach der ausgeschaltet wird.
       default:
         minutes: 15
       selector:
         duration: {}
 
     idle_timer:
-      name: Timer-Helfer
+      name: "Timer helper / Timer-Helfer"
       description: >
-        Vorab angelegter Timer-Helfer (Einstellungen → Helfer → Timer),
-        der ausschließlich dieser Automation zugeordnet ist.
+        EN: Pre-created timer helper (Settings → Helpers → Timer)
+        dedicated exclusively to this automation. Its configured
+        duration is ignored; the duration from "Idle duration" is
+        always used instead.
+
+        DE: Vorab angelegter Timer-Helfer (Einstellungen → Helfer →
+        Timer), der ausschließlich dieser Automation zugeordnet ist.
         Die dort hinterlegte Dauer wird ignoriert und stattdessen
         immer die Dauer aus "Inaktivitäts-Dauer" verwendet.
       selector:
@@ -70,11 +102,11 @@ triggers:
   - trigger: numeric_state
     entity_id: !input power_sensor
     above: !input power_threshold
-    id: aktivitaet_start
+    id: activity_start
   - trigger: numeric_state
     entity_id: !input power_sensor
     below: !input power_threshold
-    id: aktivitaet_ende
+    id: activity_end
   - trigger: homeassistant
     event: start
     id: ha_start
@@ -82,12 +114,12 @@ triggers:
     event_type: timer.finished
     event_data:
       entity_id: !input idle_timer
-    id: timer_ab
+    id: timer_finished
   - trigger: state
     entity_id: !input device_switch
     from: "unavailable"
     id: reconnect
-    
+
 variables:
   device_switch: !input device_switch
   idle_timer: !input idle_timer
@@ -95,7 +127,7 @@ variables:
 
 actions:
   - choose:
-      # Schalter geht an -> Timer starten
+      # Switch turned on -> start timer
       - conditions:
           - condition: trigger
             id: switch_on
@@ -105,18 +137,18 @@ actions:
             data:
               duration: "{{ idle_timeout }}"
 
-      # Schalter geht aus, oder Aktivität beginnt -> Timer stoppen
+      # Switch turned off, or activity started -> cancel timer
       - conditions:
           - condition: trigger
-            id: [switch_off, aktivitaet_start]
+            id: [switch_off, activity_start]
         sequence:
           - action: timer.cancel
             target: { entity_id: "{{ idle_timer }}" }
 
-      # Aktivität endet -> Timer neu starten, sofern noch an
+      # Activity ended -> restart timer, provided the device is still on
       - conditions:
           - condition: trigger
-            id: aktivitaet_ende
+            id: activity_end
           - condition: state
             entity_id: !input device_switch
             state: "on"
@@ -126,7 +158,7 @@ actions:
             data:
               duration: "{{ idle_timeout }}"
 
-      # HA-Neustart: Schalter an, aber kein Timer aktiv -> nachholen
+      # HA restart: switch is on but no timer running -> catch up
       - conditions:
           - condition: trigger
             id: ha_start
@@ -144,19 +176,32 @@ actions:
             data:
               duration: "{{ idle_timeout }}"
 
-      # Timer abgelaufen -> ausschalten
+      # Timer finished -> turn off, with retry on communication errors
       - conditions:
           - condition: trigger
-            id: timer_ab
+            id: timer_finished
           - condition: state
             entity_id: !input device_switch
             state: "on"
         sequence:
-          - action: switch.turn_off
-            target:
-              entity_id: !input device_switch
-              
-      # Gerät wieder erreichbar, Timer war zwischenzeitlich abgelaufen -> nachholen
+          - repeat:
+              while:
+                - condition: not
+                  conditions:
+                    - condition: state
+                      entity_id: !input device_switch
+                      state: "off"
+                - condition: template
+                  value_template: "{{ repeat.index <= 5 }}"
+              sequence:
+                - action: switch.turn_off
+                  continue_on_error: true
+                  target:
+                    entity_id: !input device_switch
+                - delay: "00:00:15"
+
+      # Device reconnected after being unavailable, timer had already
+      # expired in the meantime -> catch up
       - conditions:
           - condition: trigger
             id: reconnect
