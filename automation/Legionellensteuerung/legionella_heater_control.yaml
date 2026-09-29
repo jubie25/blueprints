@@ -1,0 +1,381 @@
+blueprint:
+  name: Warmwasser Legionellenschaltung (v1.2.0)
+  description: >
+    **Version: 1.2.0 (2026-09-26)**
+
+
+    Wöchentliche Legionellenschaltung: Ab der Startzeit wird auf einen
+    abgeschlossenen Warmwasserlauf der Wärmepumpe gewartet. Da deren
+    Leistungsaufnahme Warmwasser- und Raumheizungsbetrieb nicht unterscheidet,
+    wird stattdessen der Speichertemperatur-Sensor beobachtet: Ein Anstieg um
+    das eingestellte Delta gegenüber dem zuletzt gesehenen Tiefstwert gilt als
+    laufende Warmwasseraufheizung, ein anschließendes Ausbleiben weiterer
+    neuer Höchstwerte über die Stabil-Zeit als deren Abschluss. Anschließend
+    wird der Heizstab eingeschaltet, bis seine eigene Regelung bei
+    Zieltemperatur abschaltet (Leistung fällt unter die Ende-Schwelle).
+    Danach wird der Heizstab ausgeschaltet und der Vorgang beendet.
+
+
+    Der Zustand wird in einem input_boolean gehalten, sodass der Vorgang nach
+    einem Neustart von Home Assistant am selben Tag fortgesetzt wird.
+    Bei Problemen wird die konfigurierte Benachrichtigungs-Aktion ausgeführt
+    (die Variablen `titel` und `nachricht` stehen dort zur Verfügung).
+
+
+    **Änderungshistorie:**
+
+    - 1.2.0 (2026-09-26): Zeitmessung der Stabilitätsprüfung auf
+      Unix-Zeitstempel umgestellt (robuster gegen Datentyp-Probleme bei
+      Datum/Zeit-Vergleichen); Vergleich für "neuer Höchstwert" von `>=` auf
+      `>` korrigiert, damit ein unveränderter Messwert korrekt als stabil
+      zählt.
+
+    - 1.1.0 (2026-09-24): Datentyp-Fehler bei der Zeitdifferenzberechnung
+      behoben (`TypeError` bei `now() - stabil_seit`).
+
+    - 1.0.0 (2026-09-23): Erkennung des Wärmepumpenlaufs von Leistungsmessung
+      auf Speichertemperatur-Delta umgestellt, da die Wärmepumpen-Leistung
+      Warmwasser- und Raumheizungsbetrieb nicht unterscheiden kann.
+  domain: automation
+  homeassistant:
+    min_version: 2024.10.0
+  input:
+    entities:
+      name: Entitäten
+      icon: mdi:devices
+      input:
+        speicher:
+          name: Temperatursensor Warmwasserspeicher
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: temperature
+        heizstab:
+          name: Schalter Heizstab
+          selector:
+            entity:
+              filter:
+                - domain: switch
+        heizstab_leistung:
+          name: Leistungssensor Heizstab
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: power
+        flag:
+          name: Statusspeicher (input_boolean)
+          description: >
+            Eigener Helfer vom Typ "Schalter" (input_boolean), der den offenen
+            Vorgang über Neustarts hinweg merkt.
+          selector:
+            entity:
+              filter:
+                - domain: input_boolean
+    schedule:
+      name: Zeitplan
+      icon: mdi:calendar-clock
+      input:
+        startzeit:
+          name: Startzeit
+          description: >
+            Ab dieser Uhrzeit wird auf den Wärmepumpen-Warmwasserlauf
+            gewartet.
+          default: "14:00:00"
+          selector:
+            time:
+        wochentag:
+          name: Wochentag(e)
+          default:
+            - sun
+          selector:
+            select:
+              multiple: true
+              options:
+                - label: Montag
+                  value: mon
+                - label: Dienstag
+                  value: tue
+                - label: Mittwoch
+                  value: wed
+                - label: Donnerstag
+                  value: thu
+                - label: Freitag
+                  value: fri
+                - label: Samstag
+                  value: sat
+                - label: Sonntag
+                  value: sun
+    thresholds:
+      name: Schwellwerte und Zeiten
+      icon: mdi:tune
+      collapsed: true
+      input:
+        ww_delta_start:
+          name: Temperatur-Delta "Aufheizung erkannt"
+          description: >
+            Anstieg der Speichertemperatur gegenüber dem zuletzt gesehenen
+            Tiefstwert, ab dem eine laufende Wärmepumpen-Warmwasseraufheizung
+            angenommen wird (grenzt gegen den Effekt von warmem Rücklauf nach
+            einer Zapfung ab).
+          default: 0.8
+          selector:
+            number:
+              min: 0.2
+              max: 5
+              step: 0.1
+              unit_of_measurement: °C
+              mode: box
+        ww_pruef_intervall:
+          name: Prüfintervall Speichertemperatur
+          description: In diesem Abstand wird die Speichertemperatur ausgewertet.
+          default:
+            hours: 0
+            minutes: 2
+            seconds: 0
+          selector:
+            duration:
+        ww_stabil_zeit:
+          name: Stabil-Zeit nach letztem Höchstwert
+          description: >
+            So lange darf die Speichertemperatur keinen neuen Höchstwert mehr
+            erreichen, damit der Wärmepumpenlauf als abgeschlossen gilt
+            (überbrückt kurze Pausen/Abtauen).
+          default:
+            hours: 0
+            minutes: 10
+            seconds: 0
+          selector:
+            duration:
+        hs_start_schwelle:
+          name: Leistungsschwelle Heizstab "heizt"
+          default: 100
+          selector:
+            number:
+              min: 10
+              max: 5000
+              step: 10
+              unit_of_measurement: W
+              mode: box
+        hs_ende_schwelle:
+          name: Leistungsschwelle Heizstab "abgeschaltet"
+          description: Darunter hat die Regelung des Heizstabs abgeschaltet.
+          default: 10
+          selector:
+            number:
+              min: 0
+              max: 500
+              step: 1
+              unit_of_measurement: W
+              mode: box
+        hs_ende_zeit:
+          name: Ende-Zeit Heizstab
+          description: So lange muss die Leistung unter der Ende-Schwelle bleiben.
+          default:
+            hours: 0
+            minutes: 2
+            seconds: 0
+          selector:
+            duration:
+        hs_max_dauer:
+          name: Maximale Heizdauer
+          description: Sicherheits-Timeout, danach wird der Heizstab ausgeschaltet.
+          default:
+            hours: 4
+            minutes: 0
+            seconds: 0
+          selector:
+            duration:
+        ziel_temp:
+          name: Ziel-Temperatur
+          description: Liegt der Speicher am Ende darunter, wird benachrichtigt.
+          default: 60
+          selector:
+            number:
+              min: 40
+              max: 80
+              step: 1
+              unit_of_measurement: °C
+              mode: box
+    notification:
+      name: Benachrichtigung
+      icon: mdi:bell
+      input:
+        benachrichtigung:
+          name: Benachrichtigungs-Aktion
+          description: >
+            Aktion(en), die bei Problemen ausgeführt werden, z. B. ein
+            Notify-Dienst mit `title: "{{ titel }}"` und
+            `message: "{{ nachricht }}"`. Leer lassen für keine Benachrichtigung.
+          default: []
+          selector:
+            action:
+
+mode: single
+
+variables:
+  blueprint_version: "1.2.0"
+  speicher: !input speicher
+  heizstab: !input heizstab
+  heizstab_leistung: !input heizstab_leistung
+  flag: !input flag
+  hs_start_schwelle: !input hs_start_schwelle
+  ziel_temp: !input ziel_temp
+
+triggers:
+  - trigger: time
+    at: !input startzeit
+    id: start
+  - trigger: homeassistant
+    event: start
+    id: resume
+
+actions:
+  # Start-Trigger nur an den gewählten Wochentagen
+  - if:
+      - condition: trigger
+        id: start
+      - condition: not
+        conditions:
+          - condition: time
+            weekday: !input wochentag
+    then:
+      - stop: "Falscher Wochentag"
+
+  # Nach Neustart nur fortsetzen, wenn Vorgang offen und von heute
+  - if:
+      - condition: trigger
+        id: resume
+      - condition: template
+        value_template: >
+          {{ is_state(flag, 'off')
+             or states[flag].last_changed.astimezone().date() != now().date() }}
+    then:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: "{{ flag }}"
+      - stop: "Nichts fortzusetzen"
+
+  # Vorgang als offen markieren
+  - if:
+      - condition: trigger
+        id: start
+    then:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: "{{ flag }}"
+
+  # Phase 1: abgeschlossenen Wärmepumpen-Warmwasserlauf abwarten
+  # (übersprungen, wenn der Heizstab nach einem Neustart bereits läuft)
+  - if:
+      - condition: template
+        value_template: "{{ is_state(heizstab, 'off') }}"
+    then:
+      - variables:
+          ww_delta_start: !input ww_delta_start
+          ww_stabil_zeit: !input ww_stabil_zeit
+          ww_pruef_intervall: !input ww_pruef_intervall
+          ww_stabil_zeit_sek: >
+            {% set d = ww_stabil_zeit %}
+            {{ (d.hours | default(0)) * 3600
+               + (d.minutes | default(0)) * 60
+               + (d.seconds | default(0)) }}
+          phase1_start: "{{ now().timestamp() }}"
+          phase1_timeout_sek: >
+            {{ (today_at('23:59:59') - now()).total_seconds() | int }}
+          ref_min: "{{ states(speicher) | float(0) }}"
+          max_seit_start: "{{ states(speicher) | float(0) }}"
+          heizung_erkannt: false
+          stabil_seit: "{{ now().timestamp() }}"
+      - repeat:
+          while:
+            - condition: template
+              value_template: >
+                {{ not (heizung_erkannt
+                        and (now().timestamp() - stabil_seit) >= ww_stabil_zeit_sek)
+                   and (now().timestamp() - phase1_start) < phase1_timeout_sek }}
+          sequence:
+            - delay: "{{ ww_pruef_intervall }}"
+            - variables:
+                aktuelle_temp: "{{ states(speicher) | float(max_seit_start) }}"
+                ref_min: "{{ [ref_min, aktuelle_temp] | min }}"
+                heizung_erkannt: >
+                  {{ heizung_erkannt or (aktuelle_temp - ref_min) >= ww_delta_start }}
+                neuer_hoechststand: "{{ aktuelle_temp > max_seit_start }}"
+                max_seit_start: "{{ [max_seit_start, aktuelle_temp] | max }}"
+                stabil_seit: "{{ now().timestamp() if neuer_hoechststand else stabil_seit }}"
+      - if:
+          - condition: template
+            value_template: "{{ not heizung_erkannt }}"
+        then:
+          - variables:
+              titel: Legionellenschaltung
+              nachricht: >
+                Heute kein abgeschlossener Wärmepumpen-Warmwasserlauf
+                erkannt (Speichertemperatur ist nicht um {{ ww_delta_start }}
+                °C gestiegen), Heizstab wurde nicht gestartet.
+                (Blueprint v{{ blueprint_version }})
+          - repeat:
+              count: 1
+              sequence: !input benachrichtigung
+          - action: input_boolean.turn_off
+            target:
+              entity_id: "{{ flag }}"
+          - stop: "Timeout Wärmepumpen-Warmwasserlauf"
+      # Heizstab ein und warten, bis er tatsächlich heizt
+      - action: switch.turn_on
+        target:
+          entity_id: "{{ heizstab }}"
+      - wait_template: >
+          {{ states(heizstab_leistung) | float(0) > hs_start_schwelle | float }}
+        timeout: "00:05:00"
+        continue_on_timeout: true
+
+  # Phase 2: warten, bis die Heizstab-Regelung abgeschaltet hat
+  - if:
+      - condition: template
+        value_template: >
+          {{ states(heizstab_leistung) | float(0) > hs_start_schwelle | float }}
+    then:
+      - wait_for_trigger:
+          - trigger: numeric_state
+            entity_id: !input heizstab_leistung
+            below: !input hs_ende_schwelle
+            for: !input hs_ende_zeit
+        timeout: !input hs_max_dauer
+        continue_on_timeout: true
+      - if:
+          - condition: template
+            value_template: "{{ wait.trigger is none }}"
+        then:
+          - variables:
+              titel: Legionellenschaltung
+              nachricht: >
+                Heizstab hat nicht innerhalb der maximalen Heizdauer
+                abgeschaltet und wird jetzt ausgeschaltet.
+                Speicher: {{ states(speicher) }} °C
+                (Blueprint v{{ blueprint_version }})
+          - repeat:
+              count: 1
+              sequence: !input benachrichtigung
+
+  # Abschluss
+  - action: switch.turn_off
+    target:
+      entity_id: "{{ heizstab }}"
+  - action: input_boolean.turn_off
+    target:
+      entity_id: "{{ flag }}"
+  - if:
+      - condition: template
+        value_template: "{{ states(speicher) | float(0) < ziel_temp | float }}"
+    then:
+      - variables:
+          titel: Legionellenschaltung
+          nachricht: >
+            Zieltemperatur nicht erreicht: {{ states(speicher) }} °C
+            (Blueprint v{{ blueprint_version }})
+      - repeat:
+          count: 1
+          sequence: !input benachrichtigung
