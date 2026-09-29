@@ -1,7 +1,7 @@
 blueprint:
-  name: Warmwasser Legionellenschaltung (v1.2.0)
+  name: Warmwasser Legionellenschaltung (v1.3.0)
   description: >
-    **Version: 1.2.0 (2026-09-26)**
+    **Version: 1.3.0 (2026-09-27)**
 
 
     Wöchentliche Legionellenschaltung: Ab der Startzeit wird auf einen
@@ -16,13 +16,29 @@ blueprint:
     Danach wird der Heizstab ausgeschaltet und der Vorgang beendet.
 
 
-    Der Zustand wird in einem input_boolean gehalten, sodass der Vorgang nach
-    einem Neustart von Home Assistant am selben Tag fortgesetzt wird.
-    Bei Problemen wird die konfigurierte Benachrichtigungs-Aktion ausgeführt
-    (die Variablen `titel` und `nachricht` stehen dort zur Verfügung).
+    Der Zustand wird in einem input_datetime-Helfer gehalten, sodass der
+    Vorgang nach einem Neustart von Home Assistant am selben Tag fortgesetzt
+    wird. Bei Problemen wird die konfigurierte Benachrichtigungs-Aktion
+    ausgeführt (die Variablen `titel` und `nachricht` stehen dort zur
+    Verfügung).
+
+
+    **Benötigter Helfer:** ein `input_datetime` mit aktivierten Optionen
+    "Datum" und "Uhrzeit" (Prozess-Speicher, robust gegen HA-Neustarts).
 
 
     **Änderungshistorie:**
+
+    - 1.3.0 (2026-09-27): Statusspeicher und Startzeitpunkt-Speicher zu
+      einem einzigen input_datetime-Helfer zusammengelegt (der bisherige
+      input_boolean-Schalter entfällt). Der gespeicherte Zeitwert dient
+      zugleich als offen/geschlossen-Status (Platzhalterwert 1970-01-01
+      00:00:00 = geschlossen) und als echter Startzeitpunkt. Zuvor stützte
+      sich die Neustart-Erkennung auf `last_changed` des Statusspeichers;
+      dieser Metadaten-Zeitstempel wird bei einem HA-Neustart aber auf den
+      Neustart-Zeitpunkt zurückgesetzt, auch ohne echte Wertänderung -
+      der jetzt verwendete, selbst gesetzte Wert ist dagegen
+      neustart-resistent.
 
     - 1.2.0 (2026-09-26): Zeitmessung der Stabilitätsprüfung auf
       Unix-Zeitstempel umgestellt (robuster gegen Datentyp-Probleme bei
@@ -64,15 +80,23 @@ blueprint:
               filter:
                 - domain: sensor
                   device_class: power
-        flag:
-          name: Statusspeicher (input_boolean)
+        flag_start:
+          name: Prozess-Speicher (input_datetime)
           description: >
-            Eigener Helfer vom Typ "Schalter" (input_boolean), der den offenen
-            Vorgang über Neustarts hinweg merkt.
+            Eigener Helfer vom Typ "Datum/Uhrzeit" (input_datetime, mit
+            aktivierten Optionen "Datum" und "Uhrzeit"). Dient zugleich als
+            Statusspeicher und als Zeitstempel: Enthält er den
+            Startzeitpunkt von heute, gilt der Vorgang als offen; enthält er
+            den festen Wert 1970-01-01 00:00:00, gilt er als geschlossen.
+            Ein separater input_boolean-Schalter wird dadurch nicht mehr
+            benötigt. Es wird bewusst kein Metadaten-Zeitstempel
+            (last_changed) verwendet, da dieser bei einem
+            Home-Assistant-Neustart auf den Neustart-Zeitpunkt
+            zurückgesetzt wird, auch ohne echte Wertänderung.
           selector:
             entity:
               filter:
-                - domain: input_boolean
+                - domain: input_datetime
     schedule:
       name: Zeitplan
       icon: mdi:calendar-clock
@@ -215,11 +239,11 @@ blueprint:
 mode: single
 
 variables:
-  blueprint_version: "1.2.0"
+  blueprint_version: "1.3.0"
   speicher: !input speicher
   heizstab: !input heizstab
   heizstab_leistung: !input heizstab_leistung
-  flag: !input flag
+  flag_start: !input flag_start
   hs_start_schwelle: !input hs_start_schwelle
   ziel_temp: !input ziel_temp
 
@@ -243,28 +267,39 @@ actions:
     then:
       - stop: "Falscher Wochentag"
 
-  # Nach Neustart nur fortsetzen, wenn Vorgang offen und von heute
+  # Nach Neustart nur fortsetzen, wenn im Prozess-Speicher ein Startzeitpunkt
+  # von heute steht (alles andere - Platzhalterwert, alter Tag, unbekannt -
+  # gilt als "kein offener Vorgang"). Bewusst NICHT über
+  # states[...].last_changed geprüft: last_changed wird bei einem
+  # HA-Neustart auf den Neustart-Zeitpunkt zurückgesetzt, auch wenn sich der
+  # Wert nicht geändert hat. Der selbst gesetzte Wert übersteht Neustarts
+  # korrekt.
   - if:
       - condition: trigger
         id: resume
       - condition: template
         value_template: >
-          {{ is_state(flag, 'off')
-             or states[flag].last_changed.astimezone().date() != now().date() }}
+          {% set start_wert = states(flag_start) %}
+          {{ start_wert in ['unknown', 'unavailable']
+             or as_datetime(start_wert).date() != now().date() }}
     then:
-      - action: input_boolean.turn_off
+      - action: input_datetime.set_datetime
         target:
-          entity_id: "{{ flag }}"
+          entity_id: "{{ flag_start }}"
+        data:
+          datetime: "1970-01-01 00:00:00"
       - stop: "Nichts fortzusetzen"
 
-  # Vorgang als offen markieren
+  # Vorgang als offen markieren: echten Startzeitpunkt festhalten
   - if:
       - condition: trigger
         id: start
     then:
-      - action: input_boolean.turn_on
+      - action: input_datetime.set_datetime
         target:
-          entity_id: "{{ flag }}"
+          entity_id: "{{ flag_start }}"
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
 
   # Phase 1: abgeschlossenen Wärmepumpen-Warmwasserlauf abwarten
   # (übersprungen, wenn der Heizstab nach einem Neustart bereits läuft)
@@ -319,9 +354,11 @@ actions:
           - repeat:
               count: 1
               sequence: !input benachrichtigung
-          - action: input_boolean.turn_off
+          - action: input_datetime.set_datetime
             target:
-              entity_id: "{{ flag }}"
+              entity_id: "{{ flag_start }}"
+            data:
+              datetime: "1970-01-01 00:00:00"
           - stop: "Timeout Wärmepumpen-Warmwasserlauf"
       # Heizstab ein und warten, bis er tatsächlich heizt
       - action: switch.turn_on
@@ -364,9 +401,11 @@ actions:
   - action: switch.turn_off
     target:
       entity_id: "{{ heizstab }}"
-  - action: input_boolean.turn_off
+  - action: input_datetime.set_datetime
     target:
-      entity_id: "{{ flag }}"
+      entity_id: "{{ flag_start }}"
+    data:
+      datetime: "1970-01-01 00:00:00"
   - if:
       - condition: template
         value_template: "{{ states(speicher) | float(0) < ziel_temp | float }}"
