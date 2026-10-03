@@ -1,7 +1,7 @@
 blueprint:
-  name: Warmwasser Legionellenschaltung (v1.6.1)
+  name: Warmwasser Legionellenschaltung (v1.7.0)
   description: |-
-    **Version: 1.6.1 (2026-10-02)** - [Änderungshistorie (CHANGELOG.md)](https://github.com/jubie25/blueprints/blob/main/automation/Legionellensteuerung/CHANGELOG.md)
+    **Version: 1.7.0 (2026-10-03)** - [Änderungshistorie (CHANGELOG.md)](https://github.com/jubie25/blueprints/blob/main/automation/Legionellensteuerung/CHANGELOG.md)
 
     Wöchentliche Legionellenschaltung: Ab der Startzeit wird auf einen
     abgeschlossenen Warmwasserlauf der Wärmepumpe gewartet. Da deren
@@ -230,8 +230,9 @@ blueprint:
             action: {}
   source_url: https://github.com/jubie25/blueprints/blob/main/automation/Legionellensteuerung/legionella_heater_control.yaml
 mode: single
+max_exceeded: silent
 variables:
-  blueprint_version: 1.6.1
+  blueprint_version: 1.7.0
   speicher: !input speicher
   heizstab: !input heizstab
   heizstab_leistung: !input heizstab_leistung
@@ -244,6 +245,9 @@ triggers:
   id: start
 - trigger: homeassistant
   event: start
+  id: resume
+- trigger: event
+  event_type: automation_reloaded
   id: resume
 actions:
 - if:
@@ -258,16 +262,46 @@ actions:
 - if:
   - condition: trigger
     id: resume
-  - condition: template
-    value_template: "{% set start_wert = states(flag_start) %} {{ start_wert in ['unknown',
-      'unavailable']\n   or as_datetime(start_wert).date() != now().date() }}\n"
   then:
-  - action: input_datetime.set_datetime
-    target:
-      entity_id: '{{ flag_start }}'
-    data:
-      datetime: '1970-01-01 00:00:00'
-  - stop: Nichts fortzusetzen
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: >-
+          {% set w = states(flag_start) %}
+          {{ w in ['unknown', 'unavailable'] or w.startswith('1970-01-01') }}
+      sequence:
+      - stop: Kein offener Vorgang
+    - conditions:
+      - condition: template
+        value_template: '{{ as_datetime(states(flag_start)).date() != now().date() }}'
+      sequence:
+      - variables:
+          alt_start: '{{ states(flag_start) }}'
+      - action: switch.turn_off
+        target:
+          entity_id: '{{ heizstab }}'
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: '{{ flag_start }}'
+        data:
+          datetime: '1970-01-01 00:00:00'
+      - variables:
+          titel: Legionellenschaltung
+          nachricht: >-
+            Ein am {{ alt_start }} begonnener Vorgang wurde nicht abgeschlossen
+            (z. B. Abbruch durch Neustart oder Neuladen). Der Heizstab wurde
+            vorsichtshalber ausgeschaltet und der Vorgang zurückgesetzt.
+            (Blueprint v{{ blueprint_version }})
+      - repeat:
+          count: 1
+          sequence: !input benachrichtigung
+      - action: logbook.log
+        continue_on_error: true
+        data:
+          name: Legionellenschaltung
+          message: 'Verwaister Vorgang von {{ alt_start }} zurückgesetzt, Heizstab
+            ausgeschaltet'
+      - stop: Verwaister Vorgang zurückgesetzt
 - if:
   - condition: trigger
     id: start

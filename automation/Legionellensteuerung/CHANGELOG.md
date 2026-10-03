@@ -6,6 +6,33 @@ Die aktuelle Version steht im Blueprint-Namen, in der Beschreibung und am Ende d
 Benachrichtigungen ("Blueprint vX.Y.Z"). Einträge beginnen jeweils mit der neuesten Version.
 Unter "Upgrade" steht, ob in einer bestehenden Instanz Eingabefelder neu gesetzt werden müssen.
 
+## 1.7.0 – 2026-10-03
+
+### Hinzugefügt
+- Der Blueprint reagiert jetzt auch auf das **Neuladen der Automationen** (Ereignis
+  `automation_reloaded`, also Speichern in der UI oder "YAML-Konfiguration neu laden"). Ein am selben
+  Tag begonnener Vorgang, der dadurch abgebrochen wurde, wird wie nach einem Neustart von Home
+  Assistant fortgesetzt.
+
+### Behoben
+- Ein **verwaister Vorgang** (der Prozess-Speicher enthält einen Startzeitpunkt von einem früheren
+  Tag, z. B. nach einem Abbruch) ließ den Heizstab bisher eingeschaltet. Jetzt wird der Heizstab
+  ausgeschaltet, der Prozess-Speicher zurückgesetzt, ein Logbuch-Eintrag geschrieben und, falls
+  konfiguriert, benachrichtigt.
+- Ist kein Vorgang offen (Prozess-Speicher "geschlossen"), wird bei Neustart oder Neuladen nichts mehr
+  verändert. Zuvor wurde der Speicher dabei unnötig neu geschrieben.
+
+### Geändert
+- `max_exceeded: silent`: Löst ein Trigger aus, während ein Lauf aktiv ist (z. B. wenn eine andere
+  Automation neu geladen wird), erscheint keine Warnung mehr im Log.
+
+**Upgrade:** keine Änderung an den Eingabefeldern.
+
+**Bekannte Einschränkung:** Wird neu gestartet oder neu geladen, nachdem der Temperaturanstieg
+begonnen hat und bevor der Heizstab startet, gehen Tiefst- und Höchstwert verloren. Ist der
+Wärmepumpenlauf dann schon beendet, wird er nicht mehr erkannt. Es kommt die Meldung am Tagesende,
+die Woche entfällt.
+
 ## 1.6.1 – 2026-10-02
 
 ### Geändert

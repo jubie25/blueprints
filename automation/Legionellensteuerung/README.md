@@ -7,7 +7,7 @@ Strom gespart, weil der Heizstab nur den letzten Teil übernimmt.
 
 [![Blueprint in Home Assistant importieren](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjubie25%2Fblueprints%2Fblob%2Fmain%2Fautomation%2FLegionellensteuerung%2Flegionella_heater_control.yaml)
 
-**Aktuelle Version:** 1.6.1 · **Benötigt:** Home Assistant 2025.4 oder neuer · [Änderungshistorie](CHANGELOG.md)
+**Aktuelle Version:** 1.7.0 · **Benötigt:** Home Assistant 2025.4 oder neuer · [Änderungshistorie](CHANGELOG.md)
 
 ---
 
@@ -152,25 +152,72 @@ Benachrichtigt wird, wenn
 - kein abgeschlossener Wärmepumpen-Warmwasserlauf bis Tagesende erkannt wurde (der Heizstab bleibt aus),
 - der Heizstab nach der maximalen Heizdauer nicht von selbst abgeschaltet hat,
 - die Ziel-Temperatur am Ende nicht erreicht wurde,
-- die Stabil-Zeit 0 oder nicht lesbar ist (aus Sicherheitsgründen startet der Heizstab dann nicht).
+- die Stabil-Zeit 0 oder nicht lesbar ist (aus Sicherheitsgründen startet der Heizstab dann nicht),
+- ein verwaister Vorgang gefunden und zurückgesetzt wurde (der Heizstab wird dabei ausgeschaltet).
 
-Jede Meldung endet mit der Blueprint-Version, z. B. `(Blueprint v1.6.1)`.
+Jede Meldung endet mit der Blueprint-Version, z. B. `(Blueprint v1.7.0)`.
 
 Zusätzlich schreibt der Blueprint wichtige Schritte ins **Logbuch** (Quelle "Legionellenschaltung"):
 Start von Phase 1 mit den verwendeten Werten, Erkennung der Aufheizung, Zurücksetzen der Erkennung
 nach einem kurzen Ausschlag und die Entscheidung vor dem Einschalten des Heizstabs.
 
-## Verhalten bei Neustart von Home Assistant
+## Neustart, Neuladen und Abbrüche
 
-Der Zustand liegt im Prozess-Speicher und übersteht Neustarts:
+Ein Neustart von Home Assistant und das Neuladen der Automationen (Speichern in der UI, "YAML-Konfiguration
+neu laden") brechen einen laufenden Lauf ab, denn der Lauf existiert nur im Arbeitsspeicher. Der Blueprint
+reagiert auf beide Ereignisse und entscheidet anhand des Prozess-Speichers:
 
-- Ein Vorgang wird nach einem Neustart nur fortgesetzt, wenn er **am selben Tag** begonnen wurde.
-  Alles andere (alter Tag, "geschlossen", unbekannt) wird verworfen und der Speicher zurückgesetzt.
-- War der Heizstab noch nicht eingeschaltet, beginnt Phase 1 nach dem Neustart von vorn.
-- Läuft der Heizstab bereits, geht es direkt mit Phase 2 weiter.
+| Prozess-Speicher | Bedeutung | Reaktion |
+|---|---|---|
+| `1970-01-01 00:00:00` (oder unbekannt) | kein Vorgang offen | nichts, auch der Heizstab wird nicht angefasst |
+| Startzeitpunkt von **heute** | Vorgang wurde abgebrochen | wird fortgesetzt: Ist der Heizstab aus, beginnt Phase 1 von vorn. Läuft er schon, geht es mit Phase 2 weiter |
+| Startzeitpunkt von einem **früheren Tag** | verwaister Vorgang | Heizstab aus, Prozess-Speicher zurückgesetzt, Logbuch-Eintrag und Meldung |
 
-> **Wichtig:** Das Speichern oder Neuladen einer Automatisierung bricht einen **laufenden** Vorgang ab.
-> Ändere Einstellungen daher nicht, während die Legionellenschaltung läuft.
+Das Neuladen einer **anderen** Automation stört einen laufenden Vorgang nicht und erzeugt keine
+Log-Warnungen.
+
+**Einschränkung:** Beginnt Phase 1 nach einem Neustart von vorn, sind Tiefst- und Höchstwert verloren. Ist
+der Wärmepumpenlauf zu diesem Zeitpunkt schon beendet, bleibt die Temperatur flach, und der Lauf wird
+nicht mehr erkannt. Der Heizstab startet dann nicht, am Tagesende kommt die Meldung "kein abgeschlossener
+Lauf erkannt", und die Woche entfällt. Betroffen ist nur das Fenster vom Beginn des Temperaturanstiegs bis
+zum Heizstab-Start, bei typischen Werten etwa eine Viertelstunde. Plane Updates und Neustarts möglichst
+nicht in diese Zeit.
+
+## Empfohlene Absicherung
+
+Ein abgebrochener Lauf kann sich nicht selbst aufräumen, denn Home Assistant kennt keinen
+"bei Abbruch"-Hook. Der Blueprint holt das beim nächsten Neustart oder Neuladen nach. Für die Zeit dazwischen
+empfiehlt sich eine Absicherung außerhalb von Home Assistant:
+
+- **Auto-Off-Timer am Schaltaktor:** Viele Aktoren (z. B. Shelly) können einen Kanal nach einer festen
+  Zeit selbst ausschalten. Stelle ihn auf mindestens "Maximale Heizdauer + 10 Minuten", bei den
+  Standardwerten also etwa 4,5 Stunden. Er greift auch, wenn Home Assistant ausfällt. Er gilt für jede
+  Nutzung dieses Kanals, nicht nur für die Legionellenschaltung.
+- **Manuelles Zurücksetzen** (z. B. als Dashboard-Button). `automation.DEINE_AUTOMATION`,
+  `switch.DEIN_HEIZSTAB` und den Prozess-Speicher anpassen:
+
+```yaml
+script:
+  legionellenschaltung_reset:
+    alias: Legionellenschaltung zurücksetzen
+    sequence:
+      - action: automation.turn_off
+        target:
+          entity_id: automation.DEINE_AUTOMATION
+        data:
+          stop_actions: true
+      - action: switch.turn_off
+        target:
+          entity_id: switch.DEIN_HEIZSTAB
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.DEIN_PROZESS_SPEICHER
+        data:
+          datetime: "1970-01-01 00:00:00"
+      - action: automation.turn_on
+        target:
+          entity_id: automation.DEINE_AUTOMATION
+```
 
 ## Statusanzeige (optional)
 
@@ -216,6 +263,7 @@ Danach *Einstellungen → System → ⋮ → YAML-Konfiguration neu laden → Vo
 | Heizstab startet zu früh | **Stabil-Zeit** erhöhen. Im Logbuch steht bei "Heizstab wird eingeschaltet", wie lange kein neuer Höchstwert kam |
 | Heizstab startet nie, Meldung "kein abgeschlossener Lauf erkannt" | **Delta** verkleinern oder prüfen, ob der Sensor den Anstieg zeigt. Im Logbuch erscheint "Aufheizung erkannt", sobald der Anstieg gesehen wurde |
 | Änderungen am Blueprint wirken nicht | *Einstellungen → System → ⋮ → YAML-Konfiguration neu laden → Automatisierungen*. "Neu importieren" geht nur bei per URL importierten Blueprints |
+| Heizstab blieb nach einem Abbruch an | Beim nächsten Neustart oder Neuladen wird er ausgeschaltet (mit Meldung). Sofort: das Reset-Skript oben. Dauerhaft: Auto-Off-Timer am Aktor |
 | Genaue Werte nachvollziehen | *Automatisierung → Traces → Lauf wählen → Schritt "Wenn: ... is_state(heizstab, 'off')"* → Tab "Geänderte Variablen": `ref_min`, `max_seit_start`, `heizung_erkannt`, `stabil_seit`, `ww_stabil_zeit_sek` |
 
 ## Weitere Informationen
