@@ -49,12 +49,19 @@ def test_version_steht_ueberall_gleich():
     daten = _laden()
     version = str(daten["variables"]["blueprint_version"])
     assert re.fullmatch(r"\d+\.\d+\.\d+", version), version
-    assert f"(v{version})" in daten["blueprint"]["name"]
     assert daten["blueprint"]["description"].startswith(f"**Version: {version} ")
     ersteszeile = re.search(r"^## (\d+\.\d+\.\d+)", CHANGELOG.read_text(encoding="utf-8"), re.M)
     assert ersteszeile and ersteszeile.group(1) == version, (
         f"CHANGELOG.md beginnt mit {ersteszeile and ersteszeile.group(1)}, Blueprint ist {version}"
     )
+
+
+def test_blueprint_name_enthaelt_keine_versionsnummer():
+    """Aus dem Namen entstehen Namen und IDs von Entitäten (z. B. Update-Entität, Vorschlagsname
+    der Automation). Mit Version im Namen würden sie sich bei jedem Update ändern."""
+    name = _laden()["blueprint"]["name"]
+    assert not re.search(r"\bv?\d+(\.\d+)+\b", name, re.I), f"Versionsnummer im Namen: {name!r}"
+    assert not re.search(r"\bv\d", name, re.I), f"Versionsnummer im Namen: {name!r}"
 
 
 def test_changelog_ist_ausgelagert():
