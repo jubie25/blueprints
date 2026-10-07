@@ -7,7 +7,7 @@ Strom gespart, weil der Heizstab nur den letzten Teil übernimmt.
 
 [![Blueprint in Home Assistant importieren](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjubie25%2Fblueprints%2Fblob%2Fmain%2Fautomation%2FLegionellensteuerung%2Flegionella_heater_control.yaml)
 
-**Aktuelle Version:** 1.7.0 · **Benötigt:** Home Assistant 2025.4 oder neuer · [Änderungshistorie](CHANGELOG.md)
+**Aktuelle Version:** 1.7.1 · **Benötigt:** Home Assistant 2025.4 oder neuer · [Änderungshistorie](CHANGELOG.md)
 
 ---
 
@@ -155,7 +155,7 @@ Benachrichtigt wird, wenn
 - die Stabil-Zeit 0 oder nicht lesbar ist (aus Sicherheitsgründen startet der Heizstab dann nicht),
 - ein verwaister Vorgang gefunden und zurückgesetzt wurde (der Heizstab wird dabei ausgeschaltet).
 
-Jede Meldung endet mit der Blueprint-Version, z. B. `(Blueprint v1.7.0)`.
+Jede Meldung endet mit der Blueprint-Version, z. B. `(Blueprint v1.7.1)`.
 
 Zusätzlich schreibt der Blueprint wichtige Schritte ins **Logbuch** (Quelle "Legionellenschaltung"):
 Start von Phase 1 mit den verwendeten Werten, Erkennung der Aufheizung, Zurücksetzen der Erkennung
@@ -270,3 +270,4 @@ Danach *Einstellungen → System → ⋮ → YAML-Konfiguration neu laden → Vo
 
 - [Änderungshistorie](CHANGELOG.md)
 - [Blueprint-Datei](legionella_heater_control.yaml)
+- [Tests](tests/README.md): automatisierte Prüfung in einer echten Home-Assistant-Engine

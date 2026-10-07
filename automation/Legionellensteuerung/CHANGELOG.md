@@ -2,9 +2,23 @@
 
 Blueprint: [`legionella_heater_control.yaml`](legionella_heater_control.yaml)
 
-Die aktuelle Version steht im Blueprint-Namen, in der Beschreibung und am Ende der
-Benachrichtigungen ("Blueprint vX.Y.Z"). Einträge beginnen jeweils mit der neuesten Version.
+Die aktuelle Version steht in der Beschreibung des Blueprints und am Ende der Benachrichtigungen
+("Blueprint vX.Y.Z"). Sie steht bewusst **nicht** im Blueprint-Namen, weil daraus Namen und IDs von
+Entitäten entstehen. Einträge beginnen jeweils mit der neuesten Version.
 Unter "Upgrade" steht, ob in einer bestehenden Instanz Eingabefelder neu gesetzt werden müssen.
+
+## 1.7.1 – 2026-10-06
+
+### Geändert
+- Die Versionsnummer steht nicht mehr im Blueprint-Namen (`name`). Aus diesem Namen entstehen Namen und
+  Entity-IDs von Entitäten, etwa der Update-Entität des Blueprints (z. B. durch die Integration
+  blueprints-updater) und der Vorschlagsname beim Anlegen einer Automation. Mit der Version im Namen
+  änderten sie sich bei jedem Update. Die Version steht weiter in der Beschreibung, in
+  `blueprint_version` und in den Meldungen.
+
+**Upgrade:** keine Änderung an den Eingabefeldern. Bereits angelegte Entitäten behalten ihre alte
+Entity-ID (z. B. `update.warmwasser_legionellenschaltung_v1_2_0`). Sie lässt sich einmalig in den
+Entitäts-Einstellungen umbenennen.
 
 ## 1.7.0 – 2026-10-03
 

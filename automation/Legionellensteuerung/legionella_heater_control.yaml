@@ -1,7 +1,7 @@
 blueprint:
-  name: Warmwasser Legionellenschaltung (v1.7.0)
+  name: Warmwasser Legionellenschaltung
   description: |-
-    **Version: 1.7.0 (2026-10-03)** - [Änderungshistorie (CHANGELOG.md)](https://github.com/jubie25/blueprints/blob/main/automation/Legionellensteuerung/CHANGELOG.md)
+    **Version: 1.7.1 (2026-10-06)** - [Änderungshistorie (CHANGELOG.md)](https://github.com/jubie25/blueprints/blob/main/automation/Legionellensteuerung/CHANGELOG.md)
 
     Wöchentliche Legionellenschaltung: Ab der Startzeit wird auf einen
     abgeschlossenen Warmwasserlauf der Wärmepumpe gewartet. Da deren
@@ -232,7 +232,7 @@ blueprint:
 mode: single
 max_exceeded: silent
 variables:
-  blueprint_version: 1.7.0
+  blueprint_version: 1.7.1
   speicher: !input speicher
   heizstab: !input heizstab
   heizstab_leistung: !input heizstab_leistung
