@@ -1,0 +1,263 @@
+# Wärmepumpe – Heizzyklenzähler (HT/NT, pro Tag)
+# Version: 1.0.0  (siehe CHANGELOG.md)
+# Die Version steht bewusst nur hier, in der Beschreibung, im README und im
+# CHANGELOG – nie im Blueprint-Namen oder Dateinamen, damit bestehende
+# Automationen beim Update unverändert verbunden bleiben.
+# Quelle: https://github.com/jubie25/blueprints/blob/main/automation/Heat_Cycle_Counter
+#   (source_url unter `blueprint:` ermöglicht in Home Assistant das
+#    Neu-Importieren als Update.)
+
+blueprint:
+  source_url: https://github.com/jubie25/blueprints/blob/main/automation/Heat_Cycle_Counter/heat_cycle_counter.yaml
+  name: Wärmepumpe – Heizzyklenzähler (HT/NT, pro Tag)
+  description: |
+    **Version 1.0.0** – Dokumentation und Änderungen: siehe README.md und CHANGELOG.md im Repository.
+
+    Zählt Heizzyklen einer Wärmepumpe anhand eines Leistungssensors und
+    unterscheidet zwischen Haupttarif (HT) und Nebentarif (NT).
+
+    **Funktionsweise**
+    - Ein Zyklus beginnt, wenn die Leistung für die Start-Verzögerung über der
+      Start-Schwelle liegt, und endet, wenn sie für die Ende-Verzögerung unter
+      der Ende-Schwelle liegt (Hysterese über zwei Schwellen möglich).
+    - Der Zyklus wird **bei Beginn** gezählt und dem Tarif zugeordnet, der in
+      diesem Moment aktiv ist. Ein HT/NT-Wechsel während des Laufs ändert
+      nichts und erzeugt keinen zweiten Zyklus.
+    - Ein Merker-Helfer (input_boolean) verhindert Doppelzählungen innerhalb
+      eines Zyklus und überlebt Neustarts.
+    - Kurz vor Mitternacht (Standard 23:59:59) werden die Tagesstände optional
+      in die Vortag-Zähler übernommen, damit deren Historie tagespassend ist.
+    - Zur Rückstellzeit (Standard 00:00:00) werden die Tageszähler auf 0 gesetzt.
+
+    **Benötigte Helfer (vorher anlegen)**
+    - 2× Zähler (counter): Tageszähler HT, Tageszähler NT (Schrittweite 1, Startwert 0)
+    - 1× Schalter (input_boolean): Zyklus-Merker
+    - optional 2× Zähler (counter): Vortag HT, Vortag NT
+  domain: automation
+  min_version: 2024.10.0
+  input:
+    sensors:
+      name: Sensoren
+      icon: mdi:flash
+      input:
+        power_sensor:
+          name: Leistungssensor der Wärmepumpe
+          description: Sensor, dessen Leistung Beginn und Ende eines Zyklus erkennt.
+          selector:
+            entity:
+              domain: sensor
+              device_class: power
+        tariff_sensor:
+          name: Tarif-Sensor (binary_sensor)
+          description: "Zustand \"on\" = Haupttarif (HT), \"off\" = Nebentarif (NT)."
+          selector:
+            entity:
+              domain: binary_sensor
+        cycle_flag:
+          name: Zyklus-Merker (input_boolean)
+          description: Hilfsschalter, der festhält, ob gerade ein Zyklus läuft.
+          selector:
+            entity:
+              domain: input_boolean
+    thresholds:
+      name: Schwellen und Verzögerungen
+      icon: mdi:timer-cog-outline
+      input:
+        start_threshold:
+          name: Start-Schwelle
+          description: Leistung, die überschritten werden muss, damit ein Zyklus beginnt.
+          default: 300
+          selector:
+            number:
+              min: 0
+              max: 20000
+              step: 10
+              unit_of_measurement: W
+              mode: box
+        start_delay:
+          name: Start-Verzögerung
+          description: So lange muss die Leistung über der Start-Schwelle liegen.
+          default:
+            hours: 0
+            minutes: 2
+            seconds: 0
+          selector:
+            duration:
+        end_threshold:
+          name: Ende-Schwelle
+          description: Leistung, die unterschritten werden muss, damit ein Zyklus endet (kleiner oder gleich Start-Schwelle).
+          default: 100
+          selector:
+            number:
+              min: 0
+              max: 20000
+              step: 10
+              unit_of_measurement: W
+              mode: box
+        end_delay:
+          name: Ende-Verzögerung
+          description: So lange muss die Leistung unter der Ende-Schwelle liegen. Überbrückt kurze Einbrüche (z. B. Abtauung, Ventilumschaltung).
+          default:
+            hours: 0
+            minutes: 5
+            seconds: 0
+          selector:
+            duration:
+    counters:
+      name: Zähler
+      icon: mdi:counter
+      input:
+        counter_ht:
+          name: Tageszähler HT
+          selector:
+            entity:
+              domain: counter
+        counter_nt:
+          name: Tageszähler NT
+          selector:
+            entity:
+              domain: counter
+        archive_ht:
+          name: Vortag-Zähler HT (optional)
+          description: Erhält um Mitternacht den Endstand des Tageszählers HT, bevor dieser zurückgesetzt wird.
+          default: ""
+          selector:
+            entity:
+              domain: counter
+        archive_nt:
+          name: Vortag-Zähler NT (optional)
+          description: Erhält um Mitternacht den Endstand des Tageszählers NT, bevor dieser zurückgesetzt wird.
+          default: ""
+          selector:
+            entity:
+              domain: counter
+    reset:
+      name: Tagesabschluss
+      icon: mdi:restart
+      collapsed: true
+      input:
+        archive_time:
+          name: Übernahmezeit Vortag-Zähler
+          description: Uhrzeit, zu der der Tagesstand in die Vortag-Zähler geschrieben wird. Kurz vor Mitternacht wählen, damit die Historie dem richtigen Tag zugeordnet wird.
+          default: "23:59:59"
+          selector:
+            time:
+        reset_time:
+          name: Rückstellzeit
+          description: Uhrzeit der täglichen Rückstellung (Standard Mitternacht).
+          default: "00:00:00"
+          selector:
+            time:
+
+mode: queued
+max: 10
+
+variables:
+  counter_ht: !input counter_ht
+  counter_nt: !input counter_nt
+  archive_ht: !input archive_ht
+  archive_nt: !input archive_nt
+
+triggers:
+  - trigger: numeric_state
+    id: start
+    entity_id: !input power_sensor
+    above: !input start_threshold
+    for: !input start_delay
+  - trigger: numeric_state
+    id: end
+    entity_id: !input power_sensor
+    below: !input end_threshold
+    for: !input end_delay
+  - trigger: time
+    id: archive
+    at: !input archive_time
+  - trigger: time
+    id: midnight
+    at: !input reset_time
+  - trigger: homeassistant
+    id: ha_start
+    event: start
+
+actions:
+  - choose:
+      # --- Zyklusbeginn: zählen, Tarif zum Startzeitpunkt ---
+      - conditions:
+          - condition: trigger
+            id: start
+          - condition: state
+            entity_id: !input cycle_flag
+            state: "off"
+        sequence:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: !input cycle_flag
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input tariff_sensor
+                    state: "on"
+                sequence:
+                  - action: counter.increment
+                    target:
+                      entity_id: !input counter_ht
+            default:
+              - action: counter.increment
+                target:
+                  entity_id: !input counter_nt
+
+      # --- Zyklusende ---
+      - conditions:
+          - condition: trigger
+            id: end
+        sequence:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: !input cycle_flag
+
+      # --- Neustart: hängenden Merker bereinigen ---
+      - conditions:
+          - condition: trigger
+            id: ha_start
+          - condition: numeric_state
+            entity_id: !input power_sensor
+            below: !input end_threshold
+        sequence:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: !input cycle_flag
+
+      # --- Übernahme in Vortag-Zähler (kurz vor Mitternacht) ---
+      - conditions:
+          - condition: trigger
+            id: archive
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ archive_ht not in ['', none] }}"
+            then:
+              - action: counter.set_value
+                target:
+                  entity_id: !input archive_ht
+                data:
+                  value: "{{ states(counter_ht) | int(0) }}"
+          - if:
+              - condition: template
+                value_template: "{{ archive_nt not in ['', none] }}"
+            then:
+              - action: counter.set_value
+                target:
+                  entity_id: !input archive_nt
+                data:
+                  value: "{{ states(counter_nt) | int(0) }}"
+
+      # --- Rückstellung der Tageszähler ---
+      - conditions:
+          - condition: trigger
+            id: midnight
+        sequence:
+          - action: counter.reset
+            target:
+              entity_id:
+                - !input counter_ht
+                - !input counter_nt

@@ -2,6 +2,8 @@
 
 Home-Assistant-Blueprint, der die **Heizzyklen einer Wärmepumpe** zählt und dabei zwischen **Haupttarif (HT)** und **Nebentarif (NT)** unterscheidet. Gezählt wird pro Tag, die Tageszähler werden zur Rückstellzeit (Standard Mitternacht) auf 0 gesetzt.
 
+[![Blueprint in Home Assistant importieren](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjubie25%2Fblueprints%2Fblob%2Fmain%2Fautomation%2FHeat_Cycle_Counter%2Fheat_cycle_counter.yaml)
+
 Aktuelle Version: **1.0.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md)
 
 ## Funktionsumfang
@@ -21,7 +23,9 @@ Aktuelle Version: **1.0.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md)
 
 ## Installation
 
-1. Blueprint importieren: *Einstellungen → Automatisierungen & Szenen → Blueprints → Blueprint importieren* und die URL der YAML-Datei aus diesem Repository einfügen. Alternativ die Datei nach `config/blueprints/automation/<ordner>/` kopieren.
+1. Blueprint importieren: den Import-Button oben verwenden oder unter *Einstellungen → Automatisierungen & Szenen → Blueprints → Blueprint importieren* diese URL einfügen:
+   `https://github.com/jubie25/blueprints/blob/main/automation/Heat_Cycle_Counter/heat_cycle_counter.yaml`
+   Alternativ `heat_cycle_counter.yaml` nach `config/blueprints/automation/<ordner>/` kopieren.
 2. Helfer anlegen (siehe unten).
 3. Automation aus dem Blueprint erstellen und in der Maske ausfüllen.
 
@@ -84,7 +88,7 @@ Dasselbe für NT. Die Tagessumme ist dann das **Maximum pro Tag** in der Statist
 
 ## Updates
 
-Neue Versionen stehen im [CHANGELOG](CHANGELOG.md). Zum Aktualisieren den Blueprint erneut importieren (gleiche URL, bestehende Automationen bleiben verbunden) oder die Datei ersetzen. Der Blueprint-Name, der Dateiname und alle Entitäten bleiben über Versionen hinweg gleich. Bei neuen Eingaben erscheinen sie mit Standardwert in der Maske. Inkompatible Änderungen gibt es nur bei einer neuen Hauptversion und sind im CHANGELOG markiert.
+Neue Versionen stehen im [CHANGELOG](CHANGELOG.md). Zum Aktualisieren den Blueprint erneut importieren (gleiche URL, bestehende Automationen bleiben verbunden) oder die Datei `heat_cycle_counter.yaml` ersetzen. Der Blueprint-Name, der Dateiname und alle Entitäten bleiben über Versionen hinweg gleich. Bei neuen Eingaben erscheinen sie mit Standardwert in der Maske. Inkompatible Änderungen gibt es nur bei einer neuen Hauptversion und sind im CHANGELOG markiert.
 
 ## Versionierung
 
