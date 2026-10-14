@@ -2,7 +2,7 @@
 
 Home-Assistant-Blueprint, der die **Heizzyklen einer Wärmepumpe** zählt und dabei zwischen **Haupttarif (HT)** und **Nebentarif (NT)** unterscheidet. Gezählt wird pro Tag, die Tageszähler werden zur Rückstellzeit (Standard Mitternacht) auf 0 gesetzt.
 
-[![Blueprint in Home Assistant importieren](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjubie25%2Fblueprints%2Fblob%2Fmain%2Fautomation%2FHeat_Cycle_Counter%2Fheat_cycle_counter.yaml)
+[![Blueprint in Home Assistant importieren](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fjubie25%2Fblueprints%2Fmain%2Fautomation%2FHeat_Cycle_Counter%2Fheat_cycle_counter.yaml)
 
 Aktuelle Version: **1.0.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md)
 
@@ -24,7 +24,7 @@ Aktuelle Version: **1.0.0** · Änderungen: [CHANGELOG.md](CHANGELOG.md)
 ## Installation
 
 1. Blueprint importieren: den Import-Button oben verwenden oder unter *Einstellungen → Automatisierungen & Szenen → Blueprints → Blueprint importieren* diese URL einfügen:
-   `https://github.com/jubie25/blueprints/blob/main/automation/Heat_Cycle_Counter/heat_cycle_counter.yaml`
+   `https://raw.githubusercontent.com/jubie25/blueprints/main/automation/Heat_Cycle_Counter/heat_cycle_counter.yaml`
    Alternativ `heat_cycle_counter.yaml` nach `config/blueprints/automation/<ordner>/` kopieren.
 2. Helfer anlegen (siehe unten).
 3. Automation aus dem Blueprint erstellen und in der Maske ausfüllen.
