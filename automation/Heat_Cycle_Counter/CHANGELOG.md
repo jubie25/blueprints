@@ -5,6 +5,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 
 ## [1.0.0] – 2026-10-14
 
+Erstveröffentlichung.
+
 ### Hinzugefügt
 - Zyklenerkennung über Leistungssensor mit Start-/Ende-Schwelle und jeweiliger Verzögerung.
 - Getrennte Tageszähler für Haupttarif (HT) und Nebentarif (NT); Zuordnung nach Tarif zum Zyklusbeginn, auch über Tarifwechsel hinweg.

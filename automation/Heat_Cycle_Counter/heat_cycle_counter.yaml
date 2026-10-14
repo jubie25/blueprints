@@ -34,7 +34,8 @@ blueprint:
     - 1× Schalter (input_boolean): Zyklus-Merker
     - optional 2× Zähler (counter): Vortag HT, Vortag NT
   domain: automation
-  min_version: 2024.10.0
+  homeassistant:
+    min_version: 2024.10.0
   input:
     sensors:
       name: Sensoren
