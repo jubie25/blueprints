@@ -1,24 +1,29 @@
 blueprint:
-  name: Wallterminal-Display bei Präsenz einschalten
-  author: <GITHUB-USER>
+  name: presence_trigger_fully_browser
+  author: jubie25
   description: |
-    **Version 1.0.0** – siehe CHANGELOG im GitHub-Repository.
+    **Version 1.1.0** – siehe CHANGELOG im GitHub-Repository.
 
     Schaltet das Display eines Wallterminals ein, sobald ein Präsenzsensor
     Anwesenheit meldet, und hält es aktiv, solange die Präsenz anhält.
 
     **Ablauf:**
     1. Präsenzsensor wechselt von `aus` auf `an`.
-    2. Display-Schalter wird aus- und (nach kurzer Pause) wieder eingeschaltet.
+    2. Beim Start des Ablaufs wird der Display-Schalter aus- und (nach kurzer
+       Pause) wieder eingeschaltet.
     3. Solange Präsenz erkannt wird, wird in einem festen Intervall der
        "Bewegung/Aktivität auslösen"-Button gedrückt, damit das Terminal
        nicht in den Bildschirmschoner/Standby geht.
+
+    Der Ablauf läuft im Modus `single`: Ein erneuter Trigger während der
+    Ablauf noch aktiv ist, startet ihn nicht neu. Dadurch gibt es keinen
+    erneuten Aus/Ein-Zyklus am Display (kein Flackern).
 
     Die Zeiten sind unter "Zeiten & Wiederholungen" anpassbar; die
     Standardwerte entsprechen der ursprünglichen Automation.
   domain: automation
   min_version: 2024.10.0
-  source_url: https://github.com/<GITHUB-USER>/<REPOSITORY>/blob/main/presence_wallterminal_display.yaml
+  source_url: https://github.com/jubie25/blueprints/blob/main/automation/Presence_trigger_fully_browser/presence_trigger_fully_browser.yaml
   input:
     entities:
       name: Entitäten
@@ -104,7 +109,8 @@ blueprint:
             duration:
               enable_millisecond: true
 
-mode: restart
+mode: single
+max_exceeded: silent
 
 triggers:
   - trigger: state

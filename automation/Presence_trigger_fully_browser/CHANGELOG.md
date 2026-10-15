@@ -3,6 +3,13 @@
 Alle nennenswerten Änderungen an diesem Blueprint werden hier dokumentiert.
 Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.1.0] – 2026-10-15
+
+### Geändert
+- Ausführungsmodus von `restart` auf `single` (mit `max_exceeded: silent`) umgestellt. Ein erneuter Trigger startet den Ablauf nicht mehr neu, dadurch entfällt der erneute Aus/Ein-Zyklus am Display (Flackern). Das periodische Triggern des Displays bleibt unverändert.
+- Blueprint in `presence_trigger_fully_browser` umbenannt (Blueprint-Name und Dateiname).
+- `author` und `source_url` auf das GitHub-Repository eingetragen.
+
 ## [1.0.0] – 2026-10-15
 
 ### Hinzugefügt
@@ -13,5 +20,3 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 
 ### Geändert
 - Präsenzprüfung in der Schleife per `state`-Bedingung (`on`) statt `occupancy.is_detected`, damit jeder `binary_sensor` unabhängig von der Geräteklasse funktioniert.
-
-[1.0.0]: https://github.com/<GITHUB-USER>/<REPOSITORY>/releases/tag/v1.0.0
