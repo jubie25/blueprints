@@ -2,7 +2,7 @@ blueprint:
   name: presence_trigger_fully_browser
   author: jubie25
   description: |
-    **Version 1.1.0** – siehe CHANGELOG im GitHub-Repository.
+    **Version 1.1.1** – siehe CHANGELOG im GitHub-Repository.
 
     Schaltet das Display eines Wallterminals ein, sobald ein Präsenzsensor
     Anwesenheit meldet, und hält es aktiv, solange die Präsenz anhält.

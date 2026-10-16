@@ -3,6 +3,11 @@
 Alle nennenswerten Änderungen an diesem Blueprint werden hier dokumentiert.
 Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.1.1] – 2026-10-16
+
+### Behoben
+- `min_version` korrekt verschachtelt unter `blueprint.homeassistant.min_version` statt direkt unter `blueprint:`, damit Home Assistant die Mindestversion auswertet.
+
 ## [1.1.0] – 2026-10-15
 
 ### Geändert
