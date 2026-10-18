@@ -2,7 +2,7 @@ blueprint:
   name: presence_trigger_fully_browser
   author: jubie25
   description: |
-    **Version 1.1.1** – siehe CHANGELOG im GitHub-Repository.
+    **Version 1.2.0** – siehe CHANGELOG im GitHub-Repository.
 
     Schaltet das Display eines Wallterminals ein, sobald ein Präsenzsensor
     Anwesenheit meldet, und hält es aktiv, solange die Präsenz anhält.
@@ -10,7 +10,9 @@ blueprint:
     **Ablauf:**
     1. Präsenzsensor wechselt von `aus` auf `an`.
     2. Beim Start des Ablaufs wird der Display-Schalter aus- und (nach kurzer
-       Pause) wieder eingeschaltet.
+       Pause) wieder eingeschaltet. Per Auswahlliste (Abschnitt "Display beim
+       Start des Ablaufs") lässt sich stattdessen nur ein- oder nur
+       ausschalten oder der Display-Schalter gar nicht anfassen.
     3. Solange Präsenz erkannt wird, wird in einem festen Intervall der
        "Bewegung/Aktivität auslösen"-Button gedrückt, damit das Terminal
        nicht in den Bildschirmschoner/Standby geht.
@@ -56,6 +58,33 @@ blueprint:
             entity:
               filter:
                 - domain: button
+    display_start:
+      name: Display beim Start des Ablaufs
+      icon: mdi:monitor-shimmer
+      description: >
+        Optional. Legt fest, wie der Display-Schalter zu Beginn des Ablaufs
+        behandelt wird. Standard: Display-Reset (wie bisher).
+      collapsed: true
+      input:
+        display_start_mode:
+          name: Verhalten zu Beginn
+          description: >
+            Was mit dem Display-Schalter passiert, wenn der Ablauf startet.
+            Die Pause zwischen Aus und Ein wird nur beim Display-Reset
+            angewendet.
+          default: reset
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Display-Reset (Aus, Pause, Ein)
+                  value: reset
+                - label: Nur einschalten
+                  value: on_only
+                - label: Nur ausschalten
+                  value: off_only
+                - label: Display-Schalter nicht verändern
+                  value: none
     timing:
       name: Zeiten & Wiederholungen
       icon: mdi:timer-cog-outline
@@ -66,7 +95,9 @@ blueprint:
           name: Pause zwischen Aus und Ein
           description: >
             Wartezeit zwischen dem Ausschalten und dem erneuten Einschalten
-            des Displays (Display-Reset beim Start der Präsenz).
+            des Displays (Display-Reset beim Start der Präsenz). Wird nur
+            angewendet, wenn unter "Verhalten zu Beginn" der Display-Reset
+            gewählt ist.
           default:
             hours: 0
             minutes: 0
@@ -122,20 +153,35 @@ triggers:
 
 conditions: []
 
+variables:
+  start_mode: !input display_start_mode
+
 actions:
-  - action: switch.turn_off
-    metadata: {}
-    data: {}
-    target:
-      entity_id: !input display_switch
-    continue_on_error: true
-  - delay: !input display_off_on_delay
-  - action: switch.turn_on
-    metadata: {}
-    data: {}
-    target:
-      entity_id: !input display_switch
-    continue_on_error: true
+  - if:
+      - condition: template
+        value_template: "{{ start_mode in ['reset', 'off_only'] }}"
+    then:
+      - action: switch.turn_off
+        metadata: {}
+        data: {}
+        target:
+          entity_id: !input display_switch
+        continue_on_error: true
+  - if:
+      - condition: template
+        value_template: "{{ start_mode == 'reset' }}"
+    then:
+      - delay: !input display_off_on_delay
+  - if:
+      - condition: template
+        value_template: "{{ start_mode in ['reset', 'on_only'] }}"
+    then:
+      - action: switch.turn_on
+        metadata: {}
+        data: {}
+        target:
+          entity_id: !input display_switch
+        continue_on_error: true
   - repeat:
       while:
         - condition: state

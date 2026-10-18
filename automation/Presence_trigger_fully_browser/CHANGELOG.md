@@ -3,6 +3,15 @@
 Alle nennenswerten Änderungen an diesem Blueprint werden hier dokumentiert.
 Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.2.0] – 2026-10-18
+
+### Hinzugefügt
+- Neue Auswahlliste „Verhalten zu Beginn“ im eingeklappten Abschnitt „Display beim Start des Ablaufs“ mit den Optionen „Display-Reset (Aus, Pause, Ein)“, „Nur einschalten“, „Nur ausschalten“ und „Display-Schalter nicht verändern“. Standard ist der Display-Reset, das Verhalten bestehender Automationen bleibt damit unverändert.
+
+### Geändert
+- Die Pause zwischen Aus und Ein wird nur noch beim Display-Reset angewendet.
+- Hinweis: Bei Automationen, die vor 1.2.0 aus dem Blueprint erstellt wurden, gilt der Standard (Display-Reset), solange die Auswahl nicht geändert wird.
+
 ## [1.1.1] – 2026-10-16
 
 ### Behoben

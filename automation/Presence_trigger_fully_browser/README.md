@@ -7,7 +7,7 @@ Home-Assistant-Blueprint, der das Display eines Wallterminals (z. B. Tablet/Pane
 ## Funktionsweise
 
 1. Der Präsenzsensor wechselt von `aus` auf `an`.
-2. Beim Start des Ablaufs wird der Display-Schalter ausgeschaltet, kurz gewartet und wieder eingeschaltet (Reset des Displays).
+2. Beim Start des Ablaufs wird der Display-Schalter ausgeschaltet, kurz gewartet und wieder eingeschaltet (Reset des Displays). Über eine Auswahlliste lässt sich das ändern: nur ein- oder nur ausschalten oder den Display-Schalter gar nicht anfassen (siehe „Display beim Start des Ablaufs“).
 3. Solange der Präsenzsensor `an` ist, wird in Zyklen der Button „Bewegung/Aktivität auslösen“ mehrfach gedrückt, damit das Terminal nicht in den Standby geht.
 4. Sobald keine Präsenz mehr erkannt wird, endet die Schleife. Das Ausschalten des Displays übernimmt das Terminal selbst (z. B. per Timeout).
 
@@ -30,11 +30,24 @@ Der Modus ist `single` (mit `max_exceeded: silent`): Ein erneuter Trigger, währ
 | Display-Schalter | `switch` | Schaltet das Display ein/aus |
 | Button „Bewegung/Aktivität auslösen“ | `button` | Hält den Bildschirm wach |
 
+### Display beim Start des Ablaufs (optional, eingeklappt)
+
+Eine Auswahlliste „Verhalten zu Beginn“ (Standard: Display-Reset):
+
+| Auswahl | Ergebnis |
+|---|---|
+| Display-Reset (Aus, Pause, Ein) | Aus, Pause, Ein (bisheriges Verhalten) |
+| Nur einschalten | Display-Schalter wird eingeschaltet, ohne Pause |
+| Nur ausschalten | Display-Schalter wird ausgeschaltet, ohne Pause |
+| Display-Schalter nicht verändern | Der Display-Schalter bleibt unberührt, nur der Aktivitäts-Button wird periodisch gedrückt |
+
+Der Display-Schalter bleibt dabei trotzdem eine Pflichteingabe.
+
 ### Zeiten & Wiederholungen (optional, eingeklappt)
 
 | Eingabe | Standard | Beschreibung |
 |---|---|---|
-| Pause zwischen Aus und Ein | 300 ms | Wartezeit beim Display-Reset |
+| Pause zwischen Aus und Ein | 300 ms | Wartezeit beim Display-Reset (nur beim Display-Reset) |
 | Anzahl Button-Betätigungen je Zyklus | 2 | Drücke pro Zyklus |
 | Pause zwischen Button-Betätigungen | 2 s | Abstand der Drücke |
 | Wartezeit zwischen den Zyklen | 51 s | Sollte kleiner als der Display-Timeout des Terminals sein |
