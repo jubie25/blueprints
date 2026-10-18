@@ -1,0 +1,101 @@
+# Wandterminal – Display-Wakeup bei Präsenz
+# Version: 1.0.0
+# Doku: siehe README.md, Änderungen: siehe CHANGELOG.md
+blueprint:
+  name: Wandterminal – Display-Wakeup bei Präsenz
+  author: Kollege
+  domain: automation
+  description: >
+    Löst bei Präsenz sofort und danach periodisch eine Entität aus (z. B. den
+    Motion-Trigger eines Fully Browsers auf einem Wandterminal), solange der
+    Präsenzsensor aktiv ist. Bleibt der Trigger aus, läuft im Fully Browser
+    der eigene Timeout an und schaltet das Display ab.
+
+
+    Es läuft keine Dauerschleife: Ein Zeitmuster-Trigger prüft nur kurz den
+    Sensorzustand und überlebt dadurch Neustarts von Home Assistant ohne
+    Zusatzaufwand.
+
+
+    Version 1.0.0
+  input:
+    presence_sensor:
+      name: Präsenzsensor
+      description: Binary Sensor, der bei Anwesenheit im Raum aktiv (on) ist.
+      selector:
+        entity:
+          domain: binary_sensor
+    trigger_entity:
+      name: Trigger-Entität
+      description: >
+        Entität, die periodisch ausgelöst wird (Button/Input-Button werden
+        gedrückt, Skripte und Szenen gestartet).
+      selector:
+        entity:
+          domain:
+            - button
+            - input_button
+            - script
+            - scene
+    interval:
+      name: Trigger-Intervall
+      description: >
+        Abstand der Wiederholung in Sekunden. Zur Auswahl stehen nur Werte,
+        die ein Teiler von 60 sind, damit das Raster gleichmäßig bleibt.
+      default: "30"
+      selector:
+        select:
+          mode: dropdown
+          options:
+            - label: 5 Sekunden
+              value: "5"
+            - label: 10 Sekunden
+              value: "10"
+            - label: 12 Sekunden
+              value: "12"
+            - label: 15 Sekunden
+              value: "15"
+            - label: 20 Sekunden
+              value: "20"
+            - label: 30 Sekunden
+              value: "30"
+            - label: 60 Sekunden
+              value: "60"
+
+mode: single
+max_exceeded: silent
+
+trigger_variables:
+  interval_s: !input interval
+
+variables:
+  target_entity: !input trigger_entity
+
+triggers:
+  # Initialer Trigger beim Erkennen der Präsenz
+  - trigger: state
+    entity_id: !input presence_sensor
+    to: "on"
+  # Periodischer Trigger im festen Raster
+  - trigger: time_pattern
+    seconds: "{{ '0' if interval_s | int >= 60 else '/' ~ (interval_s | int) }}"
+
+conditions:
+  - condition: state
+    entity_id: !input presence_sensor
+    state: "on"
+
+actions:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ target_entity.split('.')[0] in ['button', 'input_button'] }}"
+        sequence:
+          - action: "{{ target_entity.split('.')[0] }}.press"
+            target:
+              entity_id: !input trigger_entity
+    default:
+      - action: homeassistant.turn_on
+        target:
+          entity_id: !input trigger_entity
+
