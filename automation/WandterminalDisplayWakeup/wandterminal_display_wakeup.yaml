@@ -1,5 +1,5 @@
 # Wandterminal – Display-Wakeup bei Präsenz
-# Version: 1.0.0
+# Version: 1.0.1
 # Doku: siehe README.md, Änderungen: siehe CHANGELOG.md
 blueprint:
   name: Wandterminal – Display-Wakeup bei Präsenz
@@ -17,7 +17,7 @@ blueprint:
     Zusatzaufwand.
 
 
-    Version 1.0.0
+    Version 1.0.1
   input:
     presence_sensor:
       name: Präsenzsensor
@@ -42,31 +42,28 @@ blueprint:
       description: >
         Abstand der Wiederholung in Sekunden. Zur Auswahl stehen nur Werte,
         die ein Teiler von 60 sind, damit das Raster gleichmäßig bleibt.
-      default: "30"
+      default: "/30"
       selector:
         select:
           mode: dropdown
           options:
             - label: 5 Sekunden
-              value: "5"
+              value: "/5"
             - label: 10 Sekunden
-              value: "10"
+              value: "/10"
             - label: 12 Sekunden
-              value: "12"
+              value: "/12"
             - label: 15 Sekunden
-              value: "15"
+              value: "/15"
             - label: 20 Sekunden
-              value: "20"
+              value: "/20"
             - label: 30 Sekunden
-              value: "30"
+              value: "/30"
             - label: 60 Sekunden
-              value: "60"
+              value: "0"
 
 mode: single
 max_exceeded: silent
-
-trigger_variables:
-  interval_s: !input interval
 
 variables:
   target_entity: !input trigger_entity
@@ -78,7 +75,7 @@ triggers:
     to: "on"
   # Periodischer Trigger im festen Raster
   - trigger: time_pattern
-    seconds: "{{ '0' if interval_s | int >= 60 else '/' ~ (interval_s | int) }}"
+    seconds: !input interval
 
 conditions:
   - condition: state

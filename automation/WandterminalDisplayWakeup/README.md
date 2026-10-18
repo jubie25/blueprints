@@ -1,6 +1,6 @@
 # Wandterminal – Display-Wakeup bei Präsenz
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 
 Hält das Display eines Wandterminals (Fully Browser) an, solange sich Personen im Raum aufhalten. Der Blueprint löst bei erkannter Präsenz sofort und danach periodisch eine Entität aus, z. B. den Motion-Trigger des Fully Browsers. Bleibt der Trigger aus, läuft im Fully Browser der eigene Timeout an und das Display wird nach der dortigen Wartezeit abgeschaltet.
 
