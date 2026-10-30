@@ -1,5 +1,5 @@
-# Wärmepumpe – Heizzyklenzähler (HT/NT, pro Tag)
-# Version: 1.0.0  (siehe CHANGELOG.md)
+# Wärmepumpe – Heizzyklenzähler (HT/NT)
+# Version: 1.1.0  (siehe CHANGELOG.md)
 # Die Version steht bewusst nur hier, in der Beschreibung, im README und im
 # CHANGELOG – nie im Blueprint-Namen oder Dateinamen, damit bestehende
 # Automationen beim Update unverändert verbunden bleiben.
@@ -11,7 +11,7 @@ blueprint:
   source_url: https://raw.githubusercontent.com/jubie25/blueprints/main/automation/Heat_Cycle_Counter/heat_cycle_counter.yaml
   name: Wärmepumpe – Heizzyklenzähler (HT/NT, pro Tag)
   description: |
-    **Version 1.0.0** – Dokumentation und Änderungen: siehe README.md und CHANGELOG.md im Repository.
+    **Version 1.1.0** – Dokumentation und Änderungen: siehe README.md und CHANGELOG.md im Repository.
 
     Zählt Heizzyklen einer Wärmepumpe anhand eines Leistungssensors und
     unterscheidet zwischen Haupttarif (HT) und Nebentarif (NT).
@@ -25,14 +25,21 @@ blueprint:
       nichts und erzeugt keinen zweiten Zyklus.
     - Ein Merker-Helfer (input_boolean) verhindert Doppelzählungen innerhalb
       eines Zyklus und überlebt Neustarts.
-    - Kurz vor Mitternacht (Standard 23:59:59) werden die Tagesstände optional
-      in die Vortag-Zähler übernommen, damit deren Historie tagespassend ist.
-    - Zur Rückstellzeit (Standard 00:00:00) werden die Tageszähler auf 0 gesetzt.
+
+    **Zwei Zählarten, einzeln oder gemeinsam nutzbar**
+    - **Tageszähler** (optional): werden zur Rückstellzeit (Standard 00:00:00)
+      auf 0 gesetzt. Kurz vor Mitternacht (Standard 23:59:59) kann der
+      Tagesstand in optionale Vortag-Zähler übernommen werden.
+    - **Gesamtzähler** (optional): zählen dauerhaft hoch und werden nie
+      zurückgesetzt. Mit einem Template-Sensor (state_class total_increasing)
+      lassen sich damit beliebige Zeiträume summieren, z. B. über die
+      Datumsauswahl des Energie-Dashboards.
+    - Mindestens ein Zählerpaar (HT und NT) muss gesetzt sein.
 
     **Benötigte Helfer (vorher anlegen)**
-    - 2× Zähler (counter): Tageszähler HT, Tageszähler NT (Schrittweite 1, Startwert 0)
     - 1× Schalter (input_boolean): Zyklus-Merker
-    - optional 2× Zähler (counter): Vortag HT, Vortag NT
+    - je nach Nutzung 2× Zähler (counter) als Tageszähler und/oder 2× Zähler
+      (counter) als Gesamtzähler, optional 2× Zähler als Vortag-Zähler
   domain: automation
   homeassistant:
     min_version: 2024.10.0
@@ -109,25 +116,43 @@ blueprint:
       icon: mdi:counter
       input:
         counter_ht:
-          name: Tageszähler HT
+          name: Tageszähler HT (optional)
+          description: Zähler, der pro HT-Zyklus hochzählt und zur Rückstellzeit auf 0 gesetzt wird. Leer lassen, wenn nicht benötigt.
+          default: ""
           selector:
             entity:
               domain: counter
         counter_nt:
-          name: Tageszähler NT
+          name: Tageszähler NT (optional)
+          description: Zähler, der pro NT-Zyklus hochzählt und zur Rückstellzeit auf 0 gesetzt wird. Leer lassen, wenn nicht benötigt.
+          default: ""
+          selector:
+            entity:
+              domain: counter
+        total_ht:
+          name: Gesamtzähler HT (optional)
+          description: Zähler, der pro HT-Zyklus hochzählt und nie zurückgesetzt wird. Grundlage für Langzeitstatistik und beliebige Zeiträume.
+          default: ""
+          selector:
+            entity:
+              domain: counter
+        total_nt:
+          name: Gesamtzähler NT (optional)
+          description: Zähler, der pro NT-Zyklus hochzählt und nie zurückgesetzt wird. Grundlage für Langzeitstatistik und beliebige Zeiträume.
+          default: ""
           selector:
             entity:
               domain: counter
         archive_ht:
           name: Vortag-Zähler HT (optional)
-          description: Erhält um Mitternacht den Endstand des Tageszählers HT, bevor dieser zurückgesetzt wird.
+          description: Erhält zur Übernahmezeit den Endstand des Tageszählers HT, bevor dieser zurückgesetzt wird. Setzt einen Tageszähler HT voraus.
           default: ""
           selector:
             entity:
               domain: counter
         archive_nt:
           name: Vortag-Zähler NT (optional)
-          description: Erhält um Mitternacht den Endstand des Tageszählers NT, bevor dieser zurückgesetzt wird.
+          description: Erhält zur Übernahmezeit den Endstand des Tageszählers NT, bevor dieser zurückgesetzt wird. Setzt einen Tageszähler NT voraus.
           default: ""
           selector:
             entity:
@@ -145,7 +170,7 @@ blueprint:
             time:
         reset_time:
           name: Rückstellzeit
-          description: Uhrzeit der täglichen Rückstellung (Standard Mitternacht).
+          description: Uhrzeit der täglichen Rückstellung der Tageszähler (Standard Mitternacht). Gesamtzähler werden nie zurückgesetzt.
           default: "00:00:00"
           selector:
             time:
@@ -156,8 +181,14 @@ max: 10
 variables:
   counter_ht: !input counter_ht
   counter_nt: !input counter_nt
+  total_ht: !input total_ht
+  total_nt: !input total_nt
   archive_ht: !input archive_ht
   archive_nt: !input archive_nt
+  # Zu zählende Entitäten je Tarif (leere Eingaben werden entfernt)
+  ht_targets: "{{ [counter_ht, total_ht] | reject('none') | reject('eq', '') | list }}"
+  nt_targets: "{{ [counter_nt, total_nt] | reject('none') | reject('eq', '') | list }}"
+  reset_targets: "{{ [counter_ht, counter_nt] | reject('none') | reject('eq', '') | list }}"
 
 triggers:
   - trigger: numeric_state
@@ -199,13 +230,21 @@ actions:
                     entity_id: !input tariff_sensor
                     state: "on"
                 sequence:
+                  - if:
+                      - condition: template
+                        value_template: "{{ ht_targets | count > 0 }}"
+                    then:
+                      - action: counter.increment
+                        target:
+                          entity_id: "{{ ht_targets }}"
+            default:
+              - if:
+                  - condition: template
+                    value_template: "{{ nt_targets | count > 0 }}"
+                then:
                   - action: counter.increment
                     target:
-                      entity_id: !input counter_ht
-            default:
-              - action: counter.increment
-                target:
-                  entity_id: !input counter_nt
+                      entity_id: "{{ nt_targets }}"
 
       # --- Zyklusende ---
       - conditions:
@@ -235,7 +274,7 @@ actions:
         sequence:
           - if:
               - condition: template
-                value_template: "{{ archive_ht not in ['', none] }}"
+                value_template: "{{ archive_ht not in ['', none] and counter_ht not in ['', none] }}"
             then:
               - action: counter.set_value
                 target:
@@ -244,7 +283,7 @@ actions:
                   value: "{{ states(counter_ht) | int(0) }}"
           - if:
               - condition: template
-                value_template: "{{ archive_nt not in ['', none] }}"
+                value_template: "{{ archive_nt not in ['', none] and counter_nt not in ['', none] }}"
             then:
               - action: counter.set_value
                 target:
@@ -252,13 +291,15 @@ actions:
                 data:
                   value: "{{ states(counter_nt) | int(0) }}"
 
-      # --- Rückstellung der Tageszähler ---
+      # --- Rückstellung der Tageszähler (Gesamtzähler bleiben unberührt) ---
       - conditions:
           - condition: trigger
             id: midnight
         sequence:
-          - action: counter.reset
-            target:
-              entity_id:
-                - !input counter_ht
-                - !input counter_nt
+          - if:
+              - condition: template
+                value_template: "{{ reset_targets | count > 0 }}"
+            then:
+              - action: counter.reset
+                target:
+                  entity_id: "{{ reset_targets }}"
