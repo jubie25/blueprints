@@ -1,0 +1,23 @@
+# Helfer für den Blueprint "Wärmepumpe – Ventil-Synchronisation".
+# Als Package einbinden (homeassistant: packages:) und anpassen.
+# Nach dem ersten Start "Sync aktiv" bewusst einschalten (Standard: aus = Rückfallmodus).
+
+input_boolean:
+  wp_ventilsync_lauf:
+    name: WP Ventil-Sync – Lauf aktiv
+    icon: mdi:heat-pump
+  wp_ventilsync_freigabe:
+    name: WP Ventil-Sync – Freigabe aktiv
+    icon: mdi:valve-open
+  wp_ventilsync_aktiv:
+    name: WP Ventil-Sync – Sync aktiv
+    icon: mdi:sync
+
+  # Bedarfsschalter, einer pro Raum (Heizer des jeweiligen Raumreglers).
+  # Weitere Räume nach diesem Muster ergänzen:
+  # wp_bedarf_wohnzimmer:
+  #   name: Bedarf Wohnzimmer
+  #   icon: mdi:radiator
+  # wp_bedarf_kueche:
+  #   name: Bedarf Küche
+  #   icon: mdi:radiator

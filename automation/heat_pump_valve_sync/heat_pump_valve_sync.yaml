@@ -1,1 +1,385 @@
+# =============================================================================
+# Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
+# Version: 1.0.0
+#
+# Die Raumregler (z. B. Generic Thermostat) schalten nicht mehr direkt die
+# Ventile, sondern virtuelle Schalter ("Bedarf"). Dieser Blueprint sammelt den
+# Bedarf und öffnet die Ventile aller Räume mit Bedarf gemeinsam, damit die
+# Wärmepumpe seltener, aber länger läuft.
+#
+# Siehe README.md (Einrichtung, Parameter, Grenzen) und CHANGELOG.md.
+# =============================================================================
+blueprint:
+  name: Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
+  description: |
+    **Version 1.0.0**
 
+    Sammelt den Wärmebedarf der Räume und öffnet die Heizkreisventile
+    gemeinsam, solange die Wärmepumpe läuft. Ziel: weniger Verdichterstarts,
+    längere Läufe (der Estrich dient als zusätzlicher Puffer).
+
+    **Voraussetzungen**
+    - Pro Raum ein virtueller Schalter (`input_boolean`) als "Bedarf". Er ist
+      der Heizer des jeweiligen Raumreglers (z. B. Generic Thermostat).
+    - Die echten Ventile sind Schalter (`switch`), `an` = Ventil offen
+      (sonst unten "Ventile invertiert" aktivieren).
+    - Drei Helfer (`input_boolean`): "Lauf aktiv", "Freigabe aktiv", "Sync aktiv".
+    - Eine Leistungsmessung der Wärmepumpe in Watt.
+
+    **Wichtig:** Ist "Sync aktiv" aus, folgen die Ventile direkt dem Bedarf.
+    Wird die Automatisierung deaktiviert, bleiben die Ventile im letzten
+    Zustand stehen. Siehe README, Abschnitt "Notfall-Rückbau".
+  domain: automation
+  source_url: https://github.com/jubie25/blueprints/blob/main/automation/Heat_Pump_Valve_Sync/heat_pump_valve_sync.yaml
+  min_version: 2024.10.0
+  input:
+    mapping_section:
+      name: "1 · Zuordnung"
+      icon: mdi:valve
+      input:
+        rooms:
+          name: Räume (Bedarf → Ventile)
+          description: >-
+            YAML-Liste. Je Eintrag `demand` (Bedarfsschalter, einer oder eine
+            Liste) und `valves` (Ventilschalter, einer oder eine Liste).
+            Ein Ventil darf in mehreren Einträgen vorkommen, es öffnet dann,
+            sobald irgendein zugehöriger Bedarf besteht. Beispiel:
+            `- demand: input_boolean.wp_bedarf_wohnzimmer` /
+            `  valves: [switch.ventil_wz_1, switch.ventil_wz_2]`
+          default: []
+          selector:
+            object:
+        bypass_valves:
+          name: Bypass-Ventile (Mindestdurchfluss)
+          description: >-
+            Diese Ventile öffnen, sobald die Wärmepumpe läuft oder eine
+            Freigabe aktiv ist, unabhängig vom Bedarf (z. B. das Bad).
+          default: []
+          selector:
+            entity:
+              domain: switch
+              multiple: true
+        invert_valves:
+          name: Ventile invertiert
+          description: >-
+            Aktivieren, wenn ein Ventil bei `aus` offen ist (stromlos offen).
+          default: false
+          selector:
+            boolean:
+    run_section:
+      name: "2 · Lauferkennung"
+      icon: mdi:heat-pump
+      input:
+        run_power_sensor:
+          name: Leistungsmessung der Wärmepumpe
+          selector:
+            entity:
+              domain: sensor
+              device_class: power
+        run_threshold:
+          name: Schwelle "Wärmepumpe läuft"
+          default: 500
+          selector:
+            number:
+              min: 10
+              max: 5000
+              step: 10
+              unit_of_measurement: W
+              mode: box
+        run_on_delay:
+          name: Einschaltverzögerung
+          description: Leistung muss so lange über der Schwelle liegen.
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 600
+              unit_of_measurement: s
+              mode: box
+        run_off_delay:
+          name: Ausschaltverzögerung
+          description: Leistung muss so lange unter der Schwelle liegen.
+          default: 120
+          selector:
+            number:
+              min: 0
+              max: 900
+              unit_of_measurement: s
+              mode: box
+        run_helper:
+          name: Helfer "Lauf aktiv"
+          selector:
+            entity:
+              domain: input_boolean
+    sync_section:
+      name: "3 · Sammeln & Freigeben"
+      icon: mdi:timer-sand
+      input:
+        sync_enabled:
+          name: Helfer "Sync aktiv"
+          description: >-
+            Aus = Rückfallmodus: Die Ventile folgen direkt dem Bedarf.
+          selector:
+            entity:
+              domain: input_boolean
+        release_helper:
+          name: Helfer "Freigabe aktiv"
+          selector:
+            entity:
+              domain: input_boolean
+        min_rooms:
+          name: Mindestanzahl Räume mit Bedarf
+          description: Ab so vielen Räumen mit Bedarf wird freigegeben.
+          default: 2
+          selector:
+            number:
+              min: 1
+              max: 30
+              mode: box
+        min_pause:
+          name: Mindestpause zwischen Freigaben
+          description: >-
+            So lange nach dem Ende einer Freigabe wird nicht erneut
+            freigegeben. Hauptstellschraube für die Anzahl der Starts.
+          default: 45
+          selector:
+            number:
+              min: 0
+              max: 240
+              unit_of_measurement: min
+              mode: box
+        max_wait:
+          name: Höchstwartezeit
+          description: >-
+            Auch bei weniger Räumen als oben wird freigegeben, wenn der
+            Bedarf (seit Bedarfsbeginn oder Ende der letzten Freigabe) so
+            lange besteht.
+          default: 60
+          selector:
+            number:
+              min: 5
+              max: 480
+              unit_of_measurement: min
+              mode: box
+    safety_section:
+      name: "4 · Absicherung"
+      icon: mdi:shield-check
+      collapsed: true
+      input:
+        max_release:
+          name: Höchstdauer einer Freigabe
+          description: >-
+            Endet eine Freigabe nicht durch Laufende, wird sie nach dieser
+            Zeit beendet.
+          default: 180
+          selector:
+            number:
+              min: 30
+              max: 720
+              unit_of_measurement: min
+              mode: box
+        max_run_hours:
+          name: Höchstdauer "Lauf aktiv"
+          description: >-
+            Schutz vor einem hängenden Helfer: "Lauf aktiv" wird nach dieser
+            Zeit zurückgesetzt.
+          default: 4
+          selector:
+            number:
+              min: 1
+              max: 24
+              unit_of_measurement: h
+              mode: box
+        switch_delay:
+          name: Pause zwischen den Schaltvorgängen
+          default: 100
+          selector:
+            number:
+              min: 0
+              max: 5000
+              step: 10
+              unit_of_measurement: ms
+              mode: box
+
+mode: queued
+max: 5
+max_exceeded: silent
+
+variables:
+  rooms: !input rooms
+  bypass: !input bypass_valves
+  invert_valves: !input invert_valves
+  power_sensor: !input run_power_sensor
+  threshold: !input run_threshold
+  run_helper: !input run_helper
+  release_helper: !input release_helper
+  sync_enabled: !input sync_enabled
+  min_rooms: !input min_rooms
+  min_pause: !input min_pause
+  max_wait: !input max_wait
+  max_release: !input max_release
+  max_run_h: !input max_run_hours
+  sync_on: "{{ is_state(sync_enabled, 'on') }}"
+
+triggers:
+  - trigger: numeric_state
+    entity_id: !input run_power_sensor
+    above: !input run_threshold
+    for:
+      seconds: !input run_on_delay
+    id: run_on
+  - trigger: numeric_state
+    entity_id: !input run_power_sensor
+    below: !input run_threshold
+    for:
+      seconds: !input run_off_delay
+    id: run_off
+  - trigger: time_pattern
+    minutes: "/1"
+    id: tick
+  - trigger: state
+    entity_id: !input sync_enabled
+    id: tick
+  - trigger: homeassistant
+    event: start
+    id: start
+
+actions:
+  # 1. Lauferkennung
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: run_on
+        sequence:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: !input run_helper
+      - conditions:
+          - condition: trigger
+            id: run_off
+        sequence:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: !input run_helper
+          - action: input_boolean.turn_off
+            target:
+              entity_id: !input release_helper
+      - conditions:
+          - condition: trigger
+            id: start
+        sequence:
+          - wait_template: "{{ states(power_sensor) | is_number }}"
+            timeout: "00:03:00"
+            continue_on_timeout: true
+          - if:
+              - condition: template
+                value_template: "{{ states(power_sensor) | is_number }}"
+            then:
+              - action: >-
+                  {{ 'input_boolean.turn_on'
+                     if states(power_sensor) | float(0) > threshold | float(0)
+                     else 'input_boolean.turn_off' }}
+                target:
+                  entity_id: !input run_helper
+
+  # 2. Zustand und Kennzahlen des Bedarfs
+  - variables:
+      now_ts: "{{ now().timestamp() }}"
+      run_ts: "{{ (expand(run_helper) | first).last_changed.timestamp() }}"
+      rel_ts: "{{ (expand(release_helper) | first).last_changed.timestamp() }}"
+      running: "{{ is_state(run_helper, 'on') }}"
+      rel_on: "{{ is_state(release_helper, 'on') }}"
+      metrics: >-
+        {% set ns = namespace(count=0, oldest=0) %}
+        {% for r in rooms %}
+          {% set d = [r.demand] if r.demand is string else (r.demand | default([], true)) %}
+          {% set room = namespace(on=false) %}
+          {% for e in d %}
+            {% if is_state(e, 'on') %}
+              {% set room.on = true %}
+              {% set ref = (expand(e) | first).last_changed.timestamp() %}
+              {% if not rel_on and rel_ts > ref %}{% set ref = rel_ts %}{% endif %}
+              {% set age = now_ts - ref %}
+              {% if age > ns.oldest %}{% set ns.oldest = age %}{% endif %}
+            {% endif %}
+          {% endfor %}
+          {% if room.on %}{% set ns.count = ns.count + 1 %}{% endif %}
+        {% endfor %}
+        {{ [ns.count, ns.oldest] }}
+      dem_count: "{{ metrics[0] }}"
+      dem_oldest: "{{ metrics[1] }}"
+
+  # 3. Schutz vor hängendem "Lauf aktiv"
+  - if:
+      - condition: template
+        value_template: "{{ running and (now_ts - run_ts) > max_run_h | float(4) * 3600 }}"
+    then:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: !input run_helper
+
+  # 4. Freigabe starten oder beenden
+  - variables:
+      running: "{{ is_state(run_helper, 'on') }}"
+      do_clear: >-
+        {{ rel_on and (not sync_on
+           or (dem_count == 0 and not running)
+           or (now_ts - rel_ts) > max_release | float(180) * 60) }}
+      do_release: >-
+        {{ sync_on and not rel_on and not running and dem_count > 0
+           and (now_ts - rel_ts) >= min_pause | float(45) * 60
+           and (dem_count >= min_rooms | float(2)
+                or dem_oldest >= max_wait | float(60) * 60) }}
+  - choose:
+      - conditions: "{{ do_clear }}"
+        sequence:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: !input release_helper
+      - conditions: "{{ do_release }}"
+        sequence:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: !input release_helper
+
+  # 5. Sollzustand aller Ventile berechnen
+  - variables:
+      running_now: "{{ is_state(run_helper, 'on') }}"
+      rel_now: "{{ is_state(release_helper, 'on') }}"
+      serve: "{{ not sync_on or running_now or rel_now }}"
+      desired: >-
+        {% set ns = namespace(all=[], open=[]) %}
+        {% for r in rooms %}
+          {% set d = [r.demand] if r.demand is string else (r.demand | default([], true)) %}
+          {% set v = [r.valves] if r.valves is string else (r.valves | default([], true)) %}
+          {% set room = namespace(on=false) %}
+          {% for e in d %}{% if is_state(e, 'on') %}{% set room.on = true %}{% endif %}{% endfor %}
+          {% for x in v %}
+            {% if x not in ns.all %}{% set ns.all = ns.all + [x] %}{% endif %}
+            {% if room.on and serve and x not in ns.open %}{% set ns.open = ns.open + [x] %}{% endif %}
+          {% endfor %}
+        {% endfor %}
+        {% for x in bypass %}
+          {% if x not in ns.all %}{% set ns.all = ns.all + [x] %}{% endif %}
+          {% if sync_on and (running_now or rel_now) and x not in ns.open %}{% set ns.open = ns.open + [x] %}{% endif %}
+        {% endfor %}
+        {{ [ns.all, ns.open] }}
+
+  # 6. Ventile abgleichen (nur Abweichungen, mit Pause dazwischen)
+  - repeat:
+      for_each: "{{ desired[0] }}"
+      sequence:
+        - variables:
+            want_open: "{{ repeat.item in desired[1] }}"
+            want_on: "{{ want_open != invert_valves }}"
+        - if:
+            - condition: template
+              value_template: >-
+                {{ states(repeat.item) in ['on', 'off']
+                   and is_state(repeat.item, 'on') != want_on }}
+          then:
+            - action: "{{ 'homeassistant.turn_on' if want_on else 'homeassistant.turn_off' }}"
+              target:
+                entity_id: "{{ repeat.item }}"
+            - delay:
+                milliseconds: !input switch_delay
