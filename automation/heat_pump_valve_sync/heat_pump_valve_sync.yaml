@@ -31,8 +31,6 @@ blueprint:
     Zustand stehen. Siehe README, Abschnitt "Notfall-Rückbau".
   domain: automation
   source_url: https://github.com/jubie25/blueprints/blob/main/automation/Heat_Pump_Valve_Sync/heat_pump_valve_sync.yaml
-  homeassistant:
-    min_version: 2024.10.0
   input:
     mapping_section:
       name: "1 · Zuordnung"
