@@ -1,6 +1,6 @@
 # Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
 
-**Version 1.0.0** · Home Assistant Blueprint (Automation)
+**Version 1.1.0** · Home Assistant Blueprint (Automation)
 
 Eine Wärmepumpe ohne Leistungsmodulation, die in der Übergangszeit mit kleinem Puffer und kleiner Heizlast betrieben wird, taktet: Der Puffer ist in Minuten voll, der Verdichter schaltet ab. Dieser Blueprint nutzt den Estrich als zusätzlichen Puffer. Er sammelt den Wärmebedarf der Räume und öffnet die Ventile aller Räume mit Bedarf **gemeinsam**, solange die Wärmepumpe läuft. Die Last steigt, die Läufe werden länger, und die Pausen dazwischen auch.
 
@@ -9,7 +9,7 @@ Eine Wärmepumpe ohne Leistungsmodulation, die in der Übergangszeit mit kleinem
 1. Jeder Raumregler (z. B. Generic Thermostat) schaltet nicht mehr das echte Ventil, sondern einen virtuellen Schalter. Dessen Zustand ist der **Bedarf** des Raums. Da der Generic Thermostat als Heizer nur `switch`-Entitäten zulässt, ist das ein Template-Schalter als Adapter vor einem `input_boolean`.
 2. Der Blueprint erkennt anhand einer Leistungsmessung, ob die Wärmepumpe läuft.
 3. **Freigabe:** Wenn mindestens *N* Räume Bedarf haben (oder der älteste Bedarf die *Höchstwartezeit* erreicht) und seit der letzten Freigabe die *Mindestpause* vergangen ist, werden die Ventile aller Räume mit Bedarf geöffnet. Der Puffer entleert sich, die Wärmepumpe startet.
-4. Läuft die Wärmepumpe, bleiben alle Ventile mit Bedarf offen. Dazu öffnen die **Bypass-Ventile** (z. B. das Bad) für den Mindestdurchfluss.
+4. Läuft die Wärmepumpe, bleiben alle Ventile mit Bedarf offen. Dazu öffnen die **Bypass-Ventile** (z. B. das Bad) für den Mindestdurchfluss. **Dauerhaft offene Ventile** (z. B. ein Handtuchheizkörper ohne eigenen Regler) bleiben offen, solange "Sync aktiv" an ist. Ist es aus, fasst der Blueprint Bypass- und dauerhaft offene Ventile nicht an, sie können manuell bedient werden.
 5. Mit dem Laufende endet die Freigabe, die Ventile schließen. Der Bedarf bleibt in den virtuellen Schaltern erhalten, bis der Raumregler ihn selbst beendet.
 
 Die Ventile werden bei jeder Änderung und einmal pro Minute abgeglichen. Nur Ventile, deren Istzustand vom Sollzustand abweicht, werden geschaltet, mit einer kleinen Pause dazwischen.
@@ -25,7 +25,7 @@ Die Ventile werden bei jeder Änderung und einmal pro Minute abgeglichen. Nur Ve
 ## Einrichtung
 
 1. **Helfer anlegen:** Inhalt von `heat_pump_valve_sync_helpers.yaml` als Package einbinden und für jeden Raum einen Bedarfsschalter plus Adapter-Schalter ergänzen.
-2. **Raumregler umstellen:** Bei jedem Generic Thermostat den Heizer vom echten Ventil auf den Adapter-Schalter des Raums (`switch.wp_heizer_<raum>`) ändern. In die Zuordnung des Blueprints kommt dagegen der `input_boolean` (`demand`).
+2. **Raumregler umstellen:** Bei jedem Generic Thermostat den Heizer vom echten Ventil auf den Adapter-Schalter des Raums (`switch.<raum>_heater_adapter`) ändern. In die Zuordnung des Blueprints kommt dagegen der `input_boolean` (`demand`).
 3. **Blueprint importieren** und eine Automatisierung daraus erstellen.
 4. **Zuordnung eintragen** (siehe unten), Leistungsmessung und die drei Helfer auswählen.
 5. **Zuerst mit "Sync aktiv" = aus starten.** Die Ventile folgen dann direkt dem Bedarf. Prüfe, ob alle Ventile wie erwartet schalten, erst dann "Sync aktiv" einschalten.
@@ -33,16 +33,12 @@ Die Ventile werden bei jeder Änderung und einmal pro Minute abgeglichen. Nur Ve
 ### Beispiel für die Zuordnung
 
 ```yaml
-- demand: input_boolean.wp_bedarf_wohnzimmer
+- demand: input_boolean.egwz_heat_demand
   valves:
-    - switch.ventil_wohnzimmer_1
-    - switch.ventil_wohnzimmer_2
-- demand: input_boolean.wp_bedarf_kueche
-  valves: switch.ventil_kueche
-- demand:
-    - input_boolean.wp_bedarf_flur_og
-    - input_boolean.wp_bedarf_flur_eg
-  valves: switch.ventil_flur
+    - switch.egwz_heizventil_fenster
+    - switch.egwz_heizventil_tuer
+- demand: input_boolean.egkueche_heat_demand
+  valves: switch.egkueche_heizventil
 ```
 
 `demand` und `valves` dürfen je ein einzelner Eintrag oder eine Liste sein. Ein Ventil darf in mehreren Einträgen vorkommen. Es öffnet, sobald irgendein zugehöriger Bedarf besteht.
@@ -66,7 +62,7 @@ Die Ventile werden bei jeder Änderung und einmal pro Minute abgeglichen. Nur Ve
 ## Grenzen und Sicherheit
 
 - **Notfall-Rückbau:** Wird die Automatisierung deaktiviert oder gelöscht, bleiben die Ventile im letzten Zustand stehen, und die Räume bekommen keine Wärme mehr, weil der Bedarf nur noch in den virtuellen Schaltern liegt. Dann bei den Raumreglern den Heizer wieder auf das echte Ventil umstellen.
-- **Mindestdurchfluss:** Mindestens ein Bypass-Ventil sollte eingetragen sein, sonst fehlt der Wärmepumpe bei geschlossenen Ventilen der Durchfluss. Ventile öffnen thermisch mit Verzögerung (ca. 3 Minuten). Der Bypass öffnet deshalb schon bei der Freigabe.
+- **Mindestdurchfluss:** Mindestens ein Bypass-Ventil oder dauerhaft offenes Ventil sollte eingetragen sein, sonst fehlt der Wärmepumpe bei geschlossenen Ventilen der Durchfluss. Ventile öffnen thermisch mit Verzögerung (ca. 3 Minuten). Der Bypass öffnet deshalb schon bei der Freigabe.
 - **Anlaufstrom:** Durch das gemeinsame Öffnen schalten regelmäßig viele thermische Antriebe gleichzeitig. Prüfe Absicherung, Netzteil bzw. Trafo und Relaismodule auf den Anlaufstrom aller Antriebe.
 - **Auflösung:** Änderungen am Bedarf werden mit bis zu einer Minute Verzögerung erkannt (Abgleich im Minutentakt).
 - **Neustart von Home Assistant:** Die Wartezeiten beginnen danach von vorn. "Lauf aktiv" wird beim Start anhand der Leistungsmessung neu bestimmt.
@@ -83,5 +79,6 @@ Die Ventile werden bei jeder Änderung und einmal pro Minute abgeglichen. Nur Ve
 ## Dateien
 
 - `heat_pump_valve_sync.yaml`: der Blueprint
-- `heat_pump_valve_sync_helpers.yaml`: Vorlage für die Helfer
+- `heat_pump_valve_sync_helpers.yaml`: Vorlage für die Helfer (Bedarfsschalter und Adapter)
+- `heat_pump_valve_sync_rooms.yaml`: Beispiel für eine vollständige Zuordnung (ein konkretes Haus)
 - `CHANGELOG.md`: Änderungshistorie

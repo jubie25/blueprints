@@ -1,6 +1,6 @@
 # =============================================================================
 # Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
-# Version: 1.0.0
+# Version: 1.1.0
 #
 # Die Raumregler (z. B. Generic Thermostat) schalten nicht mehr direkt die
 # Ventile, sondern virtuelle Schalter ("Bedarf", über einen Template-Schalter
@@ -13,7 +13,7 @@
 blueprint:
   name: Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
   description: |
-    **Version 1.0.0**
+    **Version 1.1.0**
 
     Sammelt den Wärmebedarf der Räume und öffnet die Heizkreisventile
     gemeinsam, solange die Wärmepumpe läuft. Ziel: weniger Verdichterstarts,
@@ -28,9 +28,10 @@ blueprint:
     - Drei Helfer (`input_boolean`): "Lauf aktiv", "Freigabe aktiv", "Sync aktiv".
     - Eine Leistungsmessung der Wärmepumpe in Watt.
 
-    **Wichtig:** Ist "Sync aktiv" aus, folgen die Ventile direkt dem Bedarf.
-    Wird die Automatisierung deaktiviert, bleiben die Ventile im letzten
-    Zustand stehen. Siehe README, Abschnitt "Notfall-Rückbau".
+    **Wichtig:** Ist "Sync aktiv" aus, folgen die Raumventile direkt dem
+    Bedarf. Bypass- und dauerhaft offene Ventile fasst der Blueprint dann
+    nicht an. Wird die Automatisierung deaktiviert, bleiben die Ventile im
+    letzten Zustand stehen. Siehe README, Abschnitt "Notfall-Rückbau".
   domain: automation
   source_url: https://github.com/jubie25/blueprints/blob/main/automation/Heat_Pump_Valve_Sync/heat_pump_valve_sync.yaml
   homeassistant:
@@ -57,6 +58,19 @@ blueprint:
           description: >-
             Diese Ventile öffnen, sobald die Wärmepumpe läuft oder eine
             Freigabe aktiv ist, unabhängig vom Bedarf (z. B. das Bad).
+            Ist "Sync aktiv" aus, werden sie nicht angefasst.
+          default: []
+          selector:
+            entity:
+              domain: switch
+              multiple: true
+        always_open_valves:
+          name: Dauerhaft offene Ventile
+          description: >-
+            Diese Ventile bleiben offen, solange "Sync aktiv" an ist, auch
+            ohne Lauf und ohne Bedarf (z. B. ein Handtuchheizkörper ohne
+            eigenen Regler). Ist "Sync aktiv" aus, werden sie nicht
+            angefasst und können manuell bedient werden.
           default: []
           selector:
             entity:
@@ -211,6 +225,7 @@ max_exceeded: silent
 variables:
   rooms: !input rooms
   bypass: !input bypass_valves
+  always_open: !input always_open_valves
   invert_valves: !input invert_valves
   power_sensor: !input run_power_sensor
   threshold: !input run_threshold
@@ -362,10 +377,16 @@ actions:
             {% if room.on and serve and x not in ns.open %}{% set ns.open = ns.open + [x] %}{% endif %}
           {% endfor %}
         {% endfor %}
-        {% for x in bypass %}
-          {% if x not in ns.all %}{% set ns.all = ns.all + [x] %}{% endif %}
-          {% if sync_on and (running_now or rel_now) and x not in ns.open %}{% set ns.open = ns.open + [x] %}{% endif %}
-        {% endfor %}
+        {% if sync_on %}
+          {% for x in bypass %}
+            {% if x not in ns.all %}{% set ns.all = ns.all + [x] %}{% endif %}
+            {% if (running_now or rel_now) and x not in ns.open %}{% set ns.open = ns.open + [x] %}{% endif %}
+          {% endfor %}
+          {% for x in always_open %}
+            {% if x not in ns.all %}{% set ns.all = ns.all + [x] %}{% endif %}
+            {% if x not in ns.open %}{% set ns.open = ns.open + [x] %}{% endif %}
+          {% endfor %}
+        {% endif %}
         {{ [ns.all, ns.open] }}
 
   # 6. Ventile abgleichen (nur Abweichungen, mit Pause dazwischen)

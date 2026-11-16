@@ -2,6 +2,14 @@
 
 Alle wesentlichen Änderungen an diesem Blueprint. Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.1.0] - 2026-11-16
+
+### Hinzugefügt
+- Eingabe "Dauerhaft offene Ventile": Diese Ventile bleiben offen, solange "Sync aktiv" an ist (z. B. ein Handtuchheizkörper ohne eigenen Regler als Mindestdurchfluss).
+
+### Geändert
+- Ist "Sync aktiv" aus, werden Bypass- und dauerhaft offene Ventile nicht mehr geschlossen, sondern nicht angefasst und können manuell bedient werden. Bisher wurden reine Bypass-Ventile im Rückfallmodus geschlossen.
+
 ## [1.0.0] - 2026-11-13
 
 ### Hinzugefügt
