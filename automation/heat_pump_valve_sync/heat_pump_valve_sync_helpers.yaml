@@ -13,11 +13,43 @@ input_boolean:
     name: WP Ventil-Sync – Sync aktiv
     icon: mdi:sync
 
-  # Bedarfsschalter, einer pro Raum (Heizer des jeweiligen Raumreglers).
-  # Weitere Räume nach diesem Muster ergänzen:
-  # wp_bedarf_wohnzimmer:
-  #   name: Bedarf Wohnzimmer
-  #   icon: mdi:radiator
-  # wp_bedarf_kueche:
-  #   name: Bedarf Küche
-  #   icon: mdi:radiator
+  # Pro Raum ein Bedarfsschalter. Er geht in die Zuordnung des Blueprints ("demand").
+  wp_bedarf_wohnzimmer:
+    name: Bedarf Wohnzimmer
+    icon: mdi:radiator
+  wp_bedarf_kueche:
+    name: Bedarf Küche
+    icon: mdi:radiator
+  # ... weitere Räume nach diesem Muster
+
+# Der Generic Thermostat akzeptiert als Heizer nur Schalter (switch), keine input_boolean.
+# Pro Raum ein Template-Schalter als Adapter: Er spiegelt den Bedarfsschalter und schaltet ihn.
+# Dieser Adapter wird im Generic Thermostat als Heizer eingetragen.
+switch:
+  - platform: template
+    switches:
+      wp_heizer_wohnzimmer:
+        unique_id: wp_heizer_wohnzimmer
+        friendly_name: Heizer Wohnzimmer (Adapter)
+        value_template: "{{ is_state('input_boolean.wp_bedarf_wohnzimmer', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.wp_bedarf_wohnzimmer
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.wp_bedarf_wohnzimmer
+      wp_heizer_kueche:
+        unique_id: wp_heizer_kueche
+        friendly_name: Heizer Küche (Adapter)
+        value_template: "{{ is_state('input_boolean.wp_bedarf_kueche', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.wp_bedarf_kueche
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.wp_bedarf_kueche
+      # ... weitere Räume nach diesem Muster

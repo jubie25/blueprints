@@ -6,7 +6,7 @@ Eine Wärmepumpe ohne Leistungsmodulation, die in der Übergangszeit mit kleinem
 
 ## Wie es funktioniert
 
-1. Jeder Raumregler (z. B. Generic Thermostat) schaltet nicht mehr das echte Ventil, sondern einen virtuellen Schalter (`input_boolean`). Dessen Zustand ist der **Bedarf** des Raums.
+1. Jeder Raumregler (z. B. Generic Thermostat) schaltet nicht mehr das echte Ventil, sondern einen virtuellen Schalter. Dessen Zustand ist der **Bedarf** des Raums. Da der Generic Thermostat als Heizer nur `switch`-Entitäten zulässt, ist das ein Template-Schalter als Adapter vor einem `input_boolean`.
 2. Der Blueprint erkennt anhand einer Leistungsmessung, ob die Wärmepumpe läuft.
 3. **Freigabe:** Wenn mindestens *N* Räume Bedarf haben (oder der älteste Bedarf die *Höchstwartezeit* erreicht) und seit der letzten Freigabe die *Mindestpause* vergangen ist, werden die Ventile aller Räume mit Bedarf geöffnet. Der Puffer entleert sich, die Wärmepumpe startet.
 4. Läuft die Wärmepumpe, bleiben alle Ventile mit Bedarf offen. Dazu öffnen die **Bypass-Ventile** (z. B. das Bad) für den Mindestdurchfluss.
@@ -17,15 +17,15 @@ Die Ventile werden bei jeder Änderung und einmal pro Minute abgeglichen. Nur Ve
 ## Voraussetzungen
 
 - Home Assistant 2024.10 oder neuer.
-- Pro Raum ein `input_boolean` als Bedarf, eingetragen als Heizer des Raumreglers.
+- Pro Raum ein `input_boolean` als Bedarf und ein Template-Schalter als Adapter. Der Adapter wird als Heizer des Raumreglers eingetragen, der `input_boolean` in der Zuordnung des Blueprints.
 - Echte Ventile als `switch` (`an` = offen, sonst "Ventile invertiert" aktivieren).
 - Drei Helfer (`input_boolean`): *Lauf aktiv*, *Freigabe aktiv*, *Sync aktiv*. Eine fertige Vorlage liegt in `heat_pump_valve_sync_helpers.yaml`.
 - Eine Leistungsmessung der Wärmepumpe in Watt.
 
 ## Einrichtung
 
-1. **Helfer anlegen:** Inhalt von `heat_pump_valve_sync_helpers.yaml` als Package einbinden (oder die drei Helfer über die Oberfläche anlegen) und für jeden Raum einen Bedarfsschalter ergänzen.
-2. **Raumregler umstellen:** Bei jedem Generic Thermostat den Heizer vom echten Ventil auf den Bedarfsschalter des Raums ändern.
+1. **Helfer anlegen:** Inhalt von `heat_pump_valve_sync_helpers.yaml` als Package einbinden und für jeden Raum einen Bedarfsschalter plus Adapter-Schalter ergänzen.
+2. **Raumregler umstellen:** Bei jedem Generic Thermostat den Heizer vom echten Ventil auf den Adapter-Schalter des Raums (`switch.wp_heizer_<raum>`) ändern. In die Zuordnung des Blueprints kommt dagegen der `input_boolean` (`demand`).
 3. **Blueprint importieren** und eine Automatisierung daraus erstellen.
 4. **Zuordnung eintragen** (siehe unten), Leistungsmessung und die drei Helfer auswählen.
 5. **Zuerst mit "Sync aktiv" = aus starten.** Die Ventile folgen dann direkt dem Bedarf. Prüfe, ob alle Ventile wie erwartet schalten, erst dann "Sync aktiv" einschalten.
