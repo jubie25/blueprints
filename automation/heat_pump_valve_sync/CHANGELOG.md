@@ -2,6 +2,11 @@
 
 Alle wesentlichen Änderungen an diesem Blueprint. Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.1.1] - 2026-11-16
+
+### Geändert
+- Dokumentation: Pro Regler genau ein Bedarfsschalter und ein Adapter. Ein Adapter darf nie von zwei Reglern geschaltet werden (gegenseitiges Überschreiben bei Neustart oder `keep_alive`). Die Blueprint-Logik ist unverändert.
+
 ## [1.1.0] - 2026-11-16
 
 ### Hinzugefügt

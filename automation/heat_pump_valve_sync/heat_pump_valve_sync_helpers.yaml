@@ -1,55 +1,386 @@
 # Helfer für den Blueprint "Wärmepumpe – Ventil-Synchronisation".
-# Als Package einbinden (homeassistant: packages:) und anpassen.
-# Nach dem ersten Start "Sync aktiv" bewusst einschalten (Standard: aus = Rückfallmodus).
+# Als Package einbinden (homeassistant: packages: !include_dir_named packages).
+# Nach dem ersten Start "WP Ventil-Sync aktiv" bewusst einschalten
+# (Standard: aus = Rückfallmodus, die Ventile folgen direkt dem Bedarf).
+#
+# Namensschema: Friendly Name deutsch, Entity-ID englisch, Raum zuerst.
+#   input_boolean.<regler>_heat_demand   Bedarf eines Reglers (Blueprint: "demand")
+#   switch.<regler>_heater_adapter       Adapter, im jeweiligen Generic Thermostat als Heizer eintragen
+# Pro Regler genau ein Bedarfsschalter und ein Adapter. Ein Adapter darf nie von zwei
+# Reglern geschaltet werden, sie würden sich gegenseitig überschreiben.
+# Der Generic Thermostat akzeptiert als Heizer nur Schalter, daher der Adapter.
 
 input_boolean:
-  wp_ventilsync_lauf:
-    name: WP Ventil-Sync – Lauf aktiv
+  heat_pump_valve_sync_running:
+    name: WP Ventil-Sync Lauf aktiv
     icon: mdi:heat-pump
-  wp_ventilsync_freigabe:
-    name: WP Ventil-Sync – Freigabe aktiv
+  heat_pump_valve_sync_release:
+    name: WP Ventil-Sync Freigabe aktiv
     icon: mdi:valve-open
-  wp_ventilsync_aktiv:
-    name: WP Ventil-Sync – Sync aktiv
+  heat_pump_valve_sync_enabled:
+    name: WP Ventil-Sync aktiv
     icon: mdi:sync
 
-  # Pro Raum ein Bedarfsschalter. Er geht in die Zuordnung des Blueprints ("demand").
-  wp_bedarf_wohnzimmer:
-    name: Bedarf Wohnzimmer
+  ugwr_heat_demand:
+    name: UGWR Wärmebedarf
     icon: mdi:radiator
-  wp_bedarf_kueche:
-    name: Bedarf Küche
+  kino_fenster_heat_demand:
+    name: Kino Fenster Wärmebedarf
     icon: mdi:radiator
-  # ... weitere Räume nach diesem Muster
+  kino_tuer_heat_demand:
+    name: Kino Tuer Wärmebedarf
+    icon: mdi:radiator
+  ugkueche_fenster_heat_demand:
+    name: UGKueche Fenster Wärmebedarf
+    icon: mdi:radiator
+  ugkueche_zkino_heat_demand:
+    name: UGKueche zKino Wärmebedarf
+    icon: mdi:radiator
+  ugbad_heat_demand:
+    name: UGBad Wärmebedarf
+    icon: mdi:radiator
+  ugflur_heat_demand:
+    name: UGFlur Wärmebedarf
+    icon: mdi:radiator
+  egwk_heat_demand:
+    name: EGWK Wärmebedarf
+    icon: mdi:radiator
+  egbad_heat_demand:
+    name: EGBad Wärmebedarf
+    icon: mdi:radiator
+  egaz_heat_demand:
+    name: EGAZ Wärmebedarf
+    icon: mdi:radiator
+  egwz_fenster_heat_demand:
+    name: EGWZ Fenster Wärmebedarf
+    icon: mdi:radiator
+  egwz_tuer_heat_demand:
+    name: EGWZ Tuer Wärmebedarf
+    icon: mdi:radiator
+  egez_fenster_heat_demand:
+    name: EGEZ Fenster Wärmebedarf
+    icon: mdi:radiator
+  egez_tuer_heat_demand:
+    name: EGEZ Tuer Wärmebedarf
+    icon: mdi:radiator
+  egkueche_heat_demand:
+    name: EGKueche Wärmebedarf
+    icon: mdi:radiator
+  egflur_heat_demand:
+    name: EGFlur Wärmebedarf
+    icon: mdi:radiator
+  ogbad_heat_demand:
+    name: OGBad Wärmebedarf
+    icon: mdi:radiator
+  ogaz_heat_demand:
+    name: OGAZ Wärmebedarf
+    icon: mdi:radiator
+  ogvz_fenster_heat_demand:
+    name: OGVZ Fenster Wärmebedarf
+    icon: mdi:radiator
+  ogvz_tuer_heat_demand:
+    name: OGVZ Tuer Wärmebedarf
+    icon: mdi:radiator
+  ogjz_fenster_heat_demand:
+    name: OGJZ Fenster Wärmebedarf
+    icon: mdi:radiator
+  ogjz_tuer_heat_demand:
+    name: OGJZ Tuer Wärmebedarf
+    icon: mdi:radiator
+  ogsz_heat_demand:
+    name: OGSZ Wärmebedarf
+    icon: mdi:radiator
+  ogflur_heat_demand:
+    name: OGFlur Wärmebedarf
+    icon: mdi:radiator
 
-# Der Generic Thermostat akzeptiert als Heizer nur Schalter (switch), keine input_boolean.
-# Pro Raum ein Template-Schalter als Adapter: Er spiegelt den Bedarfsschalter und schaltet ihn.
-# Dieser Adapter wird im Generic Thermostat als Heizer eingetragen.
-switch:
-  - platform: template
-    switches:
-      wp_heizer_wohnzimmer:
-        unique_id: wp_heizer_wohnzimmer
-        friendly_name: Heizer Wohnzimmer (Adapter)
-        value_template: "{{ is_state('input_boolean.wp_bedarf_wohnzimmer', 'on') }}"
+template:
+  - switch:
+      - name: "UGWR Heizer-Adapter"
+        unique_id: ugwr_heater_adapter
+        default_entity_id: switch.ugwr_heater_adapter
+        state: "{{ is_state('input_boolean.ugwr_heat_demand', 'on') }}"
         turn_on:
           action: input_boolean.turn_on
           target:
-            entity_id: input_boolean.wp_bedarf_wohnzimmer
+            entity_id: input_boolean.ugwr_heat_demand
         turn_off:
           action: input_boolean.turn_off
           target:
-            entity_id: input_boolean.wp_bedarf_wohnzimmer
-      wp_heizer_kueche:
-        unique_id: wp_heizer_kueche
-        friendly_name: Heizer Küche (Adapter)
-        value_template: "{{ is_state('input_boolean.wp_bedarf_kueche', 'on') }}"
+            entity_id: input_boolean.ugwr_heat_demand
+      - name: "Kino Fenster Heizer-Adapter"
+        unique_id: kino_fenster_heater_adapter
+        default_entity_id: switch.kino_fenster_heater_adapter
+        state: "{{ is_state('input_boolean.kino_fenster_heat_demand', 'on') }}"
         turn_on:
           action: input_boolean.turn_on
           target:
-            entity_id: input_boolean.wp_bedarf_kueche
+            entity_id: input_boolean.kino_fenster_heat_demand
         turn_off:
           action: input_boolean.turn_off
           target:
-            entity_id: input_boolean.wp_bedarf_kueche
-      # ... weitere Räume nach diesem Muster
+            entity_id: input_boolean.kino_fenster_heat_demand
+      - name: "Kino Tuer Heizer-Adapter"
+        unique_id: kino_tuer_heater_adapter
+        default_entity_id: switch.kino_tuer_heater_adapter
+        state: "{{ is_state('input_boolean.kino_tuer_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.kino_tuer_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.kino_tuer_heat_demand
+      - name: "UGKueche Fenster Heizer-Adapter"
+        unique_id: ugkueche_fenster_heater_adapter
+        default_entity_id: switch.ugkueche_fenster_heater_adapter
+        state: "{{ is_state('input_boolean.ugkueche_fenster_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ugkueche_fenster_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ugkueche_fenster_heat_demand
+      - name: "UGKueche zKino Heizer-Adapter"
+        unique_id: ugkueche_zkino_heater_adapter
+        default_entity_id: switch.ugkueche_zkino_heater_adapter
+        state: "{{ is_state('input_boolean.ugkueche_zkino_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ugkueche_zkino_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ugkueche_zkino_heat_demand
+      - name: "UGBad Heizer-Adapter"
+        unique_id: ugbad_heater_adapter
+        default_entity_id: switch.ugbad_heater_adapter
+        state: "{{ is_state('input_boolean.ugbad_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ugbad_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ugbad_heat_demand
+      - name: "UGFlur Heizer-Adapter"
+        unique_id: ugflur_heater_adapter
+        default_entity_id: switch.ugflur_heater_adapter
+        state: "{{ is_state('input_boolean.ugflur_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ugflur_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ugflur_heat_demand
+      - name: "EGWK Heizer-Adapter"
+        unique_id: egwk_heater_adapter
+        default_entity_id: switch.egwk_heater_adapter
+        state: "{{ is_state('input_boolean.egwk_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.egwk_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.egwk_heat_demand
+      - name: "EGBad Heizer-Adapter"
+        unique_id: egbad_heater_adapter
+        default_entity_id: switch.egbad_heater_adapter
+        state: "{{ is_state('input_boolean.egbad_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.egbad_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.egbad_heat_demand
+      - name: "EGAZ Heizer-Adapter"
+        unique_id: egaz_heater_adapter
+        default_entity_id: switch.egaz_heater_adapter
+        state: "{{ is_state('input_boolean.egaz_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.egaz_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.egaz_heat_demand
+      - name: "EGWZ Fenster Heizer-Adapter"
+        unique_id: egwz_fenster_heater_adapter
+        default_entity_id: switch.egwz_fenster_heater_adapter
+        state: "{{ is_state('input_boolean.egwz_fenster_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.egwz_fenster_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.egwz_fenster_heat_demand
+      - name: "EGWZ Tuer Heizer-Adapter"
+        unique_id: egwz_tuer_heater_adapter
+        default_entity_id: switch.egwz_tuer_heater_adapter
+        state: "{{ is_state('input_boolean.egwz_tuer_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.egwz_tuer_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.egwz_tuer_heat_demand
+      - name: "EGEZ Fenster Heizer-Adapter"
+        unique_id: egez_fenster_heater_adapter
+        default_entity_id: switch.egez_fenster_heater_adapter
+        state: "{{ is_state('input_boolean.egez_fenster_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.egez_fenster_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.egez_fenster_heat_demand
+      - name: "EGEZ Tuer Heizer-Adapter"
+        unique_id: egez_tuer_heater_adapter
+        default_entity_id: switch.egez_tuer_heater_adapter
+        state: "{{ is_state('input_boolean.egez_tuer_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.egez_tuer_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.egez_tuer_heat_demand
+      - name: "EGKueche Heizer-Adapter"
+        unique_id: egkueche_heater_adapter
+        default_entity_id: switch.egkueche_heater_adapter
+        state: "{{ is_state('input_boolean.egkueche_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.egkueche_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.egkueche_heat_demand
+      - name: "EGFlur Heizer-Adapter"
+        unique_id: egflur_heater_adapter
+        default_entity_id: switch.egflur_heater_adapter
+        state: "{{ is_state('input_boolean.egflur_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.egflur_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.egflur_heat_demand
+      - name: "OGBad Heizer-Adapter"
+        unique_id: ogbad_heater_adapter
+        default_entity_id: switch.ogbad_heater_adapter
+        state: "{{ is_state('input_boolean.ogbad_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ogbad_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ogbad_heat_demand
+      - name: "OGAZ Heizer-Adapter"
+        unique_id: ogaz_heater_adapter
+        default_entity_id: switch.ogaz_heater_adapter
+        state: "{{ is_state('input_boolean.ogaz_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ogaz_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ogaz_heat_demand
+      - name: "OGVZ Fenster Heizer-Adapter"
+        unique_id: ogvz_fenster_heater_adapter
+        default_entity_id: switch.ogvz_fenster_heater_adapter
+        state: "{{ is_state('input_boolean.ogvz_fenster_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ogvz_fenster_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ogvz_fenster_heat_demand
+      - name: "OGVZ Tuer Heizer-Adapter"
+        unique_id: ogvz_tuer_heater_adapter
+        default_entity_id: switch.ogvz_tuer_heater_adapter
+        state: "{{ is_state('input_boolean.ogvz_tuer_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ogvz_tuer_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ogvz_tuer_heat_demand
+      - name: "OGJZ Fenster Heizer-Adapter"
+        unique_id: ogjz_fenster_heater_adapter
+        default_entity_id: switch.ogjz_fenster_heater_adapter
+        state: "{{ is_state('input_boolean.ogjz_fenster_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ogjz_fenster_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ogjz_fenster_heat_demand
+      - name: "OGJZ Tuer Heizer-Adapter"
+        unique_id: ogjz_tuer_heater_adapter
+        default_entity_id: switch.ogjz_tuer_heater_adapter
+        state: "{{ is_state('input_boolean.ogjz_tuer_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ogjz_tuer_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ogjz_tuer_heat_demand
+      - name: "OGSZ Heizer-Adapter"
+        unique_id: ogsz_heater_adapter
+        default_entity_id: switch.ogsz_heater_adapter
+        state: "{{ is_state('input_boolean.ogsz_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ogsz_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ogsz_heat_demand
+      - name: "OGFlur Heizer-Adapter"
+        unique_id: ogflur_heater_adapter
+        default_entity_id: switch.ogflur_heater_adapter
+        state: "{{ is_state('input_boolean.ogflur_heat_demand', 'on') }}"
+        turn_on:
+          action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.ogflur_heat_demand
+        turn_off:
+          action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.ogflur_heat_demand

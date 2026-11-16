@@ -1,6 +1,6 @@
 # Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
 
-**Version 1.1.0** · Home Assistant Blueprint (Automation)
+**Version 1.1.1** · Home Assistant Blueprint (Automation)
 
 Eine Wärmepumpe ohne Leistungsmodulation, die in der Übergangszeit mit kleinem Puffer und kleiner Heizlast betrieben wird, taktet: Der Puffer ist in Minuten voll, der Verdichter schaltet ab. Dieser Blueprint nutzt den Estrich als zusätzlichen Puffer. Er sammelt den Wärmebedarf der Räume und öffnet die Ventile aller Räume mit Bedarf **gemeinsam**, solange die Wärmepumpe läuft. Die Last steigt, die Läufe werden länger, und die Pausen dazwischen auch.
 
@@ -17,15 +17,15 @@ Die Ventile werden bei jeder Änderung und einmal pro Minute abgeglichen. Nur Ve
 ## Voraussetzungen
 
 - Home Assistant 2024.10 oder neuer.
-- Pro Raum ein `input_boolean` als Bedarf und ein Template-Schalter als Adapter. Der Adapter wird als Heizer des Raumreglers eingetragen, der `input_boolean` in der Zuordnung des Blueprints.
+- Pro Regler (Heizer) ein `input_boolean` als Bedarf und ein Template-Schalter als Adapter. Der Adapter wird als Heizer des Reglers eingetragen, der `input_boolean` in der Zuordnung des Blueprints.
 - Echte Ventile als `switch` (`an` = offen, sonst "Ventile invertiert" aktivieren).
 - Drei Helfer (`input_boolean`): *Lauf aktiv*, *Freigabe aktiv*, *Sync aktiv*. Eine fertige Vorlage liegt in `heat_pump_valve_sync_helpers.yaml`.
 - Eine Leistungsmessung der Wärmepumpe in Watt.
 
 ## Einrichtung
 
-1. **Helfer anlegen:** Inhalt von `heat_pump_valve_sync_helpers.yaml` als Package einbinden und für jeden Raum einen Bedarfsschalter plus Adapter-Schalter ergänzen.
-2. **Raumregler umstellen:** Bei jedem Generic Thermostat den Heizer vom echten Ventil auf den Adapter-Schalter des Raums (`switch.<raum>_heater_adapter`) ändern. In die Zuordnung des Blueprints kommt dagegen der `input_boolean` (`demand`).
+1. **Helfer anlegen:** Inhalt von `heat_pump_valve_sync_helpers.yaml` als Package einbinden und für jeden Regler einen Bedarfsschalter plus Adapter-Schalter ergänzen.
+2. **Raumregler umstellen:** Bei jedem Generic Thermostat den Heizer vom echten Ventil auf den eigenen Adapter-Schalter (`switch.<regler>_heater_adapter`) ändern. In die Zuordnung des Blueprints kommt dagegen der `input_boolean` (`demand`).
 3. **Blueprint importieren** und eine Automatisierung daraus erstellen.
 4. **Zuordnung eintragen** (siehe unten), Leistungsmessung und die drei Helfer auswählen.
 5. **Zuerst mit "Sync aktiv" = aus starten.** Die Ventile folgen dann direkt dem Bedarf. Prüfe, ob alle Ventile wie erwartet schalten, erst dann "Sync aktiv" einschalten.
@@ -33,10 +33,10 @@ Die Ventile werden bei jeder Änderung und einmal pro Minute abgeglichen. Nur Ve
 ### Beispiel für die Zuordnung
 
 ```yaml
-- demand: input_boolean.egwz_heat_demand
-  valves:
-    - switch.egwz_heizventil_fenster
-    - switch.egwz_heizventil_tuer
+- demand: input_boolean.egwz_fenster_heat_demand
+  valves: switch.egwz_heizventil_fenster
+- demand: input_boolean.egwz_tuer_heat_demand
+  valves: switch.egwz_heizventil_tuer
 - demand: input_boolean.egkueche_heat_demand
   valves: switch.egkueche_heizventil
 ```
@@ -62,6 +62,7 @@ Die Ventile werden bei jeder Änderung und einmal pro Minute abgeglichen. Nur Ve
 ## Grenzen und Sicherheit
 
 - **Notfall-Rückbau:** Wird die Automatisierung deaktiviert oder gelöscht, bleiben die Ventile im letzten Zustand stehen, und die Räume bekommen keine Wärme mehr, weil der Bedarf nur noch in den virtuellen Schaltern liegt. Dann bei den Raumreglern den Heizer wieder auf das echte Ventil umstellen.
+- **Ein Adapter, ein Regler:** Ein Adapter darf immer nur von **einem** Regler geschaltet werden. Zwei Regler auf demselben Adapter überschreiben sich gegenseitig, z. B. bei Neustart oder `keep_alive`: Der Regler ohne Bedarf setzt den Bedarf des anderen wieder zurück. Räume mit mehreren Reglern bekommen deshalb pro Regler einen eigenen Bedarfsschalter und Adapter. Die Zuordnung darf mehrere `demand`-Einträge für dasselbe Ventil enthalten (ODER-Verknüpfung).
 - **Mindestdurchfluss:** Mindestens ein Bypass-Ventil oder dauerhaft offenes Ventil sollte eingetragen sein, sonst fehlt der Wärmepumpe bei geschlossenen Ventilen der Durchfluss. Ventile öffnen thermisch mit Verzögerung (ca. 3 Minuten). Der Bypass öffnet deshalb schon bei der Freigabe.
 - **Anlaufstrom:** Durch das gemeinsame Öffnen schalten regelmäßig viele thermische Antriebe gleichzeitig. Prüfe Absicherung, Netzteil bzw. Trafo und Relaismodule auf den Anlaufstrom aller Antriebe.
 - **Auflösung:** Änderungen am Bedarf werden mit bis zu einer Minute Verzögerung erkannt (Abgleich im Minutentakt).
