@@ -1,6 +1,6 @@
 # =============================================================================
 # Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
-# Version: 1.1.0
+# Version: 1.2.0
 #
 # Die Raumregler (z. B. Generic Thermostat) schalten nicht mehr direkt die
 # Ventile, sondern virtuelle Schalter ("Bedarf", über einen Template-Schalter
@@ -13,20 +13,23 @@
 blueprint:
   name: Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
   description: |
-    **Version 1.1.0**
+    **Version 1.2.0**
 
     Sammelt den Wärmebedarf der Räume und öffnet die Heizkreisventile
     gemeinsam, solange die Wärmepumpe läuft. Ziel: weniger Verdichterstarts,
     längere Läufe (der Estrich dient als zusätzlicher Puffer).
 
     **Voraussetzungen**
-    - Pro Raum ein virtueller Schalter als "Bedarf" (`input_boolean`) und
-      ein Template-Schalter als Adapter, der als Heizer des Raumreglers
-      (z. B. Generic Thermostat) eingetragen wird.
+    - Pro Regler (z. B. Generic Thermostat) ein virtueller Schalter als
+      "Bedarf" (`input_boolean`) und ein Template-Schalter als Adapter, der
+      als Heizer des Reglers eingetragen wird. Ein Adapter darf nur von
+      einem Regler geschaltet werden, sonst überschreiben sich die Regler.
     - Die echten Ventile sind Schalter (`switch`), `an` = Ventil offen
       (sonst unten "Ventile invertiert" aktivieren).
     - Drei Helfer (`input_boolean`): "Lauf aktiv", "Freigabe aktiv", "Sync aktiv".
     - Eine Leistungsmessung der Wärmepumpe in Watt.
+    - Die Bedarfsschalter zusätzlich als Liste (Abschnitt 1), damit
+      Änderungen des Bedarfs die Automatisierung sofort auslösen.
 
     **Wichtig:** Ist "Sync aktiv" aus, folgen die Raumventile direkt dem
     Bedarf. Bypass- und dauerhaft offene Ventile fasst der Blueprint dann
@@ -53,6 +56,17 @@ blueprint:
           default: []
           selector:
             object:
+        demand_entities:
+          name: Bedarfsschalter (für die Auslösung)
+          description: >-
+            Alle Bedarfsschalter aus der Zuordnung oben, noch einmal als
+            Liste. Eine Änderung eines dieser Schalter löst die
+            Automatisierung sofort aus. Fehlt ein Schalter hier, wird sein
+            Bedarf erst beim nächsten Sicherheitstakt erkannt.
+          selector:
+            entity:
+              domain: input_boolean
+              multiple: true
         bypass_valves:
           name: Bypass-Ventile (Mindestdurchfluss)
           description: >-
@@ -207,6 +221,27 @@ blueprint:
               max: 24
               unit_of_measurement: h
               mode: box
+        tick_interval:
+          name: Sicherheitstakt
+          description: >-
+            Zeitgesteuerter Abgleich. Er sorgt dafür, dass der Ablauf von
+            Mindestpause und Höchstwartezeit erkannt wird und fängt
+            verpasste Ereignisse ab. Bedarfsänderungen, Laufstart und
+            Laufende lösen unabhängig davon sofort aus.
+          default: "/5"
+          selector:
+            select:
+              options:
+                - label: Jede Minute
+                  value: "/1"
+                - label: Alle 2 Minuten
+                  value: "/2"
+                - label: Alle 5 Minuten
+                  value: "/5"
+                - label: Alle 10 Minuten
+                  value: "/10"
+                - label: Alle 15 Minuten
+                  value: "/15"
         switch_delay:
           name: Pause zwischen den Schaltvorgängen
           default: 100
@@ -221,6 +256,9 @@ blueprint:
 mode: queued
 max: 5
 max_exceeded: silent
+
+trace:
+  stored_traces: 50
 
 variables:
   rooms: !input rooms
@@ -252,8 +290,14 @@ triggers:
     for:
       seconds: !input run_off_delay
     id: run_off
+  - trigger: state
+    entity_id: !input demand_entities
+    to:
+      - "on"
+      - "off"
+    id: demand
   - trigger: time_pattern
-    minutes: "/1"
+    minutes: !input tick_interval
     id: tick
   - trigger: state
     entity_id: !input sync_enabled
@@ -282,6 +326,30 @@ actions:
           - action: input_boolean.turn_off
             target:
               entity_id: !input release_helper
+      - conditions:
+          - condition: trigger
+            id: tick
+          - condition: template
+            value_template: >-
+              {% set p = states(power_sensor) %}
+              {% if p | is_number %}
+                {% set above = p | float(0) > threshold | float(0) %}
+                {{ above != is_state(run_helper, 'on') }}
+              {% else %}false{% endif %}
+        sequence:
+          - action: >-
+              {{ 'input_boolean.turn_on'
+                 if states(power_sensor) | float(0) > threshold | float(0)
+                 else 'input_boolean.turn_off' }}
+            target:
+              entity_id: !input run_helper
+          - if:
+              - condition: template
+                value_template: "{{ states(power_sensor) | float(0) <= threshold | float(0) }}"
+            then:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: !input release_helper
       - conditions:
           - condition: trigger
             id: start
@@ -403,6 +471,7 @@ actions:
                    and is_state(repeat.item, 'on') != want_on }}
           then:
             - action: "{{ 'homeassistant.turn_on' if want_on else 'homeassistant.turn_off' }}"
+              continue_on_error: true
               target:
                 entity_id: "{{ repeat.item }}"
             - delay:
