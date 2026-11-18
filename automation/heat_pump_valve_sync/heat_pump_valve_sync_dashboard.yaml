@@ -1,11 +1,12 @@
-# Dashboard "WP Ventil-Sync" (optional), Version 1.0.0
-# Voraussetzungen (HACS): mushroom, button-card. Package heat_pump_valve_sync_monitor.yaml eingebunden.
+# Dashboard "WP Ventil-Sync" (optional), Version 1.6.0
+# Voraussetzungen (HACS): mushroom, button-card, card-mod. Package heat_pump_valve_sync_monitor.yaml eingebunden.
 # Einrichtung: Neues Dashboard anlegen, dann oben rechts "Dashboard bearbeiten" -> Drei-Punkte-Menü ->
 # "Raw-Konfigurationseditor" und den kompletten Inhalt dieser Datei einfügen.
-# Wird die Ansicht in ein bestehendes Dashboard übernommen, muss der Block button_card_templates
-# dort mit der vorhandenen Definition zusammengeführt werden.
-# Die Climates folgen dem Schema climate.<raum>_thermostat[_fenster|_tuer|_zkino].
-# Die Leistungsmessung der Wärmepumpe ist sensor.shelly27_leistung (bei Bedarf unten ersetzen).
+# Hinweis: Der Raw-Editor entfernt Kommentare beim Speichern. Das ist normal.
+# Einstellungen (Leistungssensor, Helfer, Bypass- und dauerhaft offene Ventile) kommen aus dem
+# Sensor sensor.heat_pump_valve_sync_config des Monitoring-Packages, also aus der Automatisierung.
+# Fest eingetragen bleiben: die Raumkacheln (Climate, Bedarf, Ventil), die Kurznamen in
+# "Ventile real" und der Helfer "Sync aktiv" im Sync-Chip (zum Umschalten nötig).
 title: WP Ventil-Sync
 button_card_templates:
   vsync_tile:
@@ -15,7 +16,7 @@ button_card_templates:
     tap_action:
       action: more-info
     custom_fields:
-      n: "[[[ return variables.label ]]]"
+      lbl: '[[[ return variables.label ]]]'
       t: |
         [[[
           const c = entity.attributes.current_temperature;
@@ -29,7 +30,7 @@ button_card_templates:
           const v = states[variables.valve] && states[variables.valve].state === 'on';
           if (d && v) return 'heizt';
           if (d) return 'wartet auf Freigabe';
-          if (v) return 'Ventil offen (Lauf/Bypass)';
+          if (v) return 'Ventil offen ohne Bedarf';
           return 'ruht';
         ]]]
     styles:
@@ -47,12 +48,12 @@ button_card_templates:
               return 'var(--ha-card-background, var(--card-background-color))';
             ]]]
       grid:
-        - grid-template-areas: '"n t" "s s"'
+        - grid-template-areas: '"lbl t" "s s"'
         - grid-template-columns: 1fr auto
         - grid-template-rows: auto auto
         - row-gap: 4px
       custom_fields:
-        n:
+        lbl:
           - justify-self: start
           - font-weight: 600
           - font-size: 14px
@@ -70,260 +71,573 @@ views:
     icon: mdi:valve
     cards:
       - type: custom:mushroom-template-card
-        primary: "{{ states('sensor.heat_pump_valve_sync_status') }}"
-        secondary: "WP-Leistung {{ states('sensor.shelly27_leistung') | float(0) | round(0) }} W"
-        icon: "{{ state_attr('sensor.heat_pump_valve_sync_status', 'icon') }}"
-        icon_color: "{{ state_attr('sensor.heat_pump_valve_sync_status', 'color') }}"
+        primary: '{{ states(''sensor.heat_pump_valve_sync_status'') }}'
+        secondary: >-
+          {% set p = state_attr('sensor.heat_pump_valve_sync_config', 'power_sensor') %}
+          WP-Leistung {{ states(p) | float(0) | round(0) if p else '–' }} W
+        icon: '{{ state_attr(''sensor.heat_pump_valve_sync_status'', ''icon'') }}'
+        icon_color: '{{ state_attr(''sensor.heat_pump_valve_sync_status'', ''color'') }}'
         entity: sensor.heat_pump_valve_sync_status
         multiline_secondary: false
       - type: custom:mushroom-chips-card
         alignment: center
         chips:
           - type: template
-            entity: input_boolean.heat_pump_valve_sync_enabled
+            entity: input_boolean.bphelper_ventilsync_sync_aktiv
             icon: mdi:sync
-            icon_color: "{{ 'green' if is_state(entity, 'on') else 'grey' }}"
-            content: "Sync {{ 'an' if is_state(entity, 'on') else 'aus' }}"
+            icon_color: '{{ ''green'' if is_state(entity, ''on'') else ''grey'' }}'
+            content: Sync {{ 'an' if is_state(entity, 'on') else 'aus' }}
             tap_action:
               action: toggle
           - type: template
-            entity: input_boolean.heat_pump_valve_sync_running
+            entity: sensor.heat_pump_valve_sync_config
             icon: mdi:heat-pump
-            icon_color: "{{ 'orange' if is_state(entity, 'on') else 'disabled' }}"
-            content: "Lauf"
+            icon_color: >-
+              {{ 'orange' if is_state(state_attr(entity, 'run_helper'), 'on') else 'disabled' }}
+            content: Lauf
+            tap_action:
+              action: none
           - type: template
-            entity: input_boolean.heat_pump_valve_sync_release
+            entity: sensor.heat_pump_valve_sync_config
             icon: mdi:valve-open
-            icon_color: "{{ 'amber' if is_state(entity, 'on') else 'disabled' }}"
-            content: "Freigabe"
+            icon_color: >-
+              {{ 'amber' if is_state(state_attr(entity, 'release_helper'), 'on') else 'disabled' }}
+            content: Freigabe
+            tap_action:
+              action: none
           - type: template
             entity: sensor.heat_pump_valve_sync_demand_count
             icon: mdi:radiator
-            icon_color: "{{ 'blue' if states(entity) | int(0) > 0 else 'disabled' }}"
-            content: "{{ states(entity) }} mit Bedarf"
+            icon_color: '{{ ''blue'' if states(entity) | int(0) > 0 else ''disabled'' }}'
+            content: '{{ states(entity) }} mit Bedarf'
+            tap_action:
+              action: more-info
           - type: template
             entity: sensor.heat_pump_valve_sync_pause_remaining
             icon: mdi:pause-circle-outline
-            icon_color: "{{ 'blue' if states(entity) | int(0) > 0 else 'disabled' }}"
-            content: "Pause {{ states(entity) }} min"
+            icon_color: '{{ ''blue'' if states(entity) | int(0) > 0 else ''disabled'' }}'
+            content: Pause {{ states(entity) }} min
+            tap_action:
+              action: more-info
           - type: template
             entity: sensor.wp_ventil_sync_starts_heute
             icon: mdi:counter
-            content: "{{ states(entity) }} Starts heute"
+            content: '{{ states(entity) }} Starts heute'
+            tap_action:
+              action: more-info
           - type: template
             entity: sensor.wp_ventil_sync_laufzeit_heute
             icon: mdi:clock-outline
-            content: "{{ states(entity) | float(0) | round(1) }} h Laufzeit"
-      - type: markdown
-        content: >-
-          **Farben:** orange = heizt (Bedarf und Ventil offen), gelb = wartet auf Freigabe,
-          blau = Ventil offen ohne Bedarf (Lauf oder Bypass), neutral = ruht.
-      - type: heading
-        heading: Untergeschoss
-        heading_style: title
-      - type: grid
-        columns: 2
-        square: false
+            content: '{{ states(entity) | float(0) | round(1) }} h Laufzeit'
+            tap_action:
+              action: more-info
+          - type: template
+            entity: sensor.heat_pump_valve_sync_run_today
+            icon: mdi:chart-line
+            content: >-
+              {% if is_number(states(entity)) %}Ø {{ states(entity) | float(0) | round(0) | int }} min{% else %}Ø –{% endif %}
+            tap_action:
+              action: more-info
+          - type: template
+            entity: sensor.heat_pump_valve_sync_run_today
+            icon: mdi:arrow-collapse-down
+            content: >-
+              {% set v = state_attr(entity, 'min') %}Min {{ v | round(0) | int if v is number else '–' }} min
+            tap_action:
+              action: more-info
+          - type: template
+            entity: sensor.heat_pump_valve_sync_run_today
+            icon: mdi:arrow-collapse-up
+            content: >-
+              {% set v = state_attr(entity, 'max') %}Max {{ v | round(0) | int if v is number else '–' }} min
+            tap_action:
+              action: more-info
+          - type: template
+            entity: sensor.heat_pump_valve_sync_run_yesterday
+            icon: mdi:history
+            content: >-
+              {% if is_number(states(entity)) %}Vortag Ø {{ states(entity) | float(0) | round(0) | int }} min ({{ state_attr(entity, 'min') | round(0) | int }}–{{ state_attr(entity, 'max') | round(0) | int }}){% else %}Vortag –{% endif %}
+            tap_action:
+              action: more-info
+      - type: custom:button-card
+        show_icon: false
+        show_name: false
+        show_state: false
+        tap_action:
+          action: none
+        triggers_update: all
+        custom_fields:
+          v: |
+            [[[
+              const groups = [
+                { f: 'UG', v: [
+                  { l: 'UGWR', e: 'switch.ugwr_heizventil' },
+                  { l: 'Kino F', e: 'switch.kino_heizventil_fenster' },
+                  { l: 'Kino T', e: 'switch.kino_heizventil_tuer' },
+                  { l: 'UGKü F', e: 'switch.ugkueche_heizventil_fenster' },
+                  { l: 'UGKü zK', e: 'switch.ugkueche_heizventil_zkino' },
+                  { l: 'UGBad', e: 'switch.ugbad_heizventil' },
+                  { l: 'UGFlur', e: 'switch.ugflur_heizventil' },
+                ] },
+                { f: 'EG', v: [
+                  { l: 'EGWK', e: 'switch.egwk_heizventil' },
+                  { l: 'EGBad', e: 'switch.egbad_heizventil' },
+                  { l: 'EGAZ', e: 'switch.egaz_heizventil' },
+                  { l: 'EGWZ F', e: 'switch.egwz_heizventil_fenster' },
+                  { l: 'EGWZ T', e: 'switch.egwz_heizventil_tuer' },
+                  { l: 'EGEZ F', e: 'switch.egez_heizventil_fenster' },
+                  { l: 'EGEZ T', e: 'switch.egez_heizventil_tuer' },
+                  { l: 'EGKüche', e: 'switch.egkueche_heizventil' },
+                  { l: 'EGFlur', e: 'switch.egflur_heizventil' },
+                ] },
+                { f: 'OG', v: [
+                  { l: 'OGBad', e: 'switch.ogbad_heizventil' },
+                  { l: 'OGAZ', e: 'switch.ogaz_heizventil' },
+                  { l: 'OGVZ F', e: 'switch.ogvz_heizventil_fenster' },
+                  { l: 'OGVZ T', e: 'switch.ogvz_heizventil_tuer' },
+                  { l: 'OGJZ F', e: 'switch.ogjz_heizventil_fenster' },
+                  { l: 'OGJZ T', e: 'switch.ogjz_heizventil_tuer' },
+                  { l: 'OGSZ', e: 'switch.ogsz_heizventil' },
+                  { l: 'OGFlur', e: 'switch.ogflur_heizventil' },
+                ] },
+              ];
+              const cfg = states['sensor.heat_pump_valve_sync_config'];
+              const A = cfg ? cfg.attributes : {};
+              const name = function (e) { return (states[e] && states[e].attributes.friendly_name) || e; };
+              const special = (A.bypass_valves || []).concat(A.always_open_valves || [])
+                .map(function (e) { return { l: name(e), e: e }; });
+              const known = {};
+              groups.forEach(function (g) { g.v.forEach(function (x) { known[x.e] = true; }); });
+              const extra = special.filter(function (x) { return !known[x.e]; });
+              if (extra.length) groups.push({ f: '+', v: extra });
+              const isSpecial = {};
+              special.forEach(function (x) { isSpecial[x.e] = true; });
+              let open = 0, total = 0, rows = '';
+              groups.forEach(function (g) {
+                let pills = '';
+                g.v.forEach(function (x) {
+                  const st = states[x.e] ? states[x.e].state : 'unknown';
+                  total++;
+                  let bg = 'transparent', bd = 'rgba(128,128,128,0.35)', fw = '400';
+                  if (st === 'on') { open++; bg = 'rgba(255,112,67,0.35)'; bd = 'rgba(255,112,67,0.9)'; fw = '600'; }
+                  else if (st !== 'off') { bg = 'rgba(244,67,54,0.25)'; bd = 'rgba(244,67,54,0.9)'; }
+                  const ul = isSpecial[x.e] ? 'text-decoration:underline;' : '';
+                  pills += '<span style="margin:2px 3px 2px 0;padding:1px 7px;border-radius:10px;font-size:11px;white-space:nowrap;' + ul + 'font-weight:' + fw + ';background:' + bg + ';border:1px solid ' + bd + '">' + x.l + '</span>';
+                });
+                rows += '<div style="display:flex;flex-wrap:wrap;align-items:center;margin-top:3px"><b style="width:24px;font-size:11px;opacity:0.7">' + g.f + '</b>' + pills + '</div>';
+              });
+              return '<div style="font-size:12px;font-weight:600">Ventile real: ' + open + ' von ' + total + ' offen</div>' + rows + '<div style="font-size:10px;opacity:0.6;margin-top:4px">orange = offen, grau = zu, rot = nicht erreichbar, unterstrichen = Bypass / dauerhaft offen</div>';
+            ]]]
+        styles:
+          card:
+            - padding: 8px 12px
+            - border-radius: 12px
+          grid:
+            - grid-template-areas: '"v"'
+            - grid-template-columns: 1fr
+          custom_fields:
+            v:
+              - justify-self: stretch
+              - text-align: left
+      - type: custom:button-card
+        show_icon: false
+        show_name: false
+        show_state: false
+        tap_action:
+          action: none
+        custom_fields:
+          g: |
+            [[[
+              const items = [
+                { c: 'rgba(255,112,67,0.30)', t: 'heizt', d: 'Bedarf und Ventil offen' },
+                { c: 'rgba(255,193,7,0.30)', t: 'wartet auf Freigabe', d: 'Bedarf, Ventil zu' },
+                { c: 'rgba(66,165,245,0.22)', t: 'Ventil offen ohne Bedarf', d: 'Lauf, Bypass oder dauerhaft offen' },
+                { c: 'transparent', t: 'ruht', d: 'kein Bedarf, Ventil zu' },
+              ];
+              let out = '<div style="display:flex;flex-wrap:wrap;gap:6px 14px">';
+              items.forEach(function (x) {
+                out += '<div style="display:flex;align-items:center;gap:6px">'
+                  + '<span style="width:22px;height:14px;border-radius:4px;flex:none;background:' + x.c + ';border:1px solid rgba(128,128,128,0.5)"></span>'
+                  + '<span style="font-size:12px"><b>' + x.t + '</b> <span style="opacity:0.65">' + x.d + '</span></span></div>';
+              });
+              return out + '</div>';
+            ]]]
+        styles:
+          card:
+            - padding: 8px 12px
+            - border-radius: 12px
+          grid:
+            - grid-template-areas: '"g"'
+            - grid-template-columns: 1fr
+          custom_fields:
+            g:
+              - justify-self: stretch
+              - text-align: left
+      - type: vertical-stack
+        card_mod:
+          style: |
+            :host {
+              display: block;
+              padding: 8px;
+              border-radius: 16px;
+              background: color-mix(in srgb, #7e8ea0 16%, transparent);
+            }
         cards:
           - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ugwr_thermostat
-            variables:
-              label: "UGWR"
-              demand: input_boolean.ugwr_heat_demand
-              valve: switch.ugwr_heizventil
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.kino_thermostat_fenster
-            variables:
-              label: "Kino Fenster"
-              demand: input_boolean.kino_fenster_heat_demand
-              valve: switch.kino_heizventil_fenster
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.kino_thermostat_tuer
-            variables:
-              label: "Kino Tür"
-              demand: input_boolean.kino_tuer_heat_demand
-              valve: switch.kino_heizventil_tuer
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ugkueche_thermostat_fenster
-            variables:
-              label: "UGKüche Fenster"
-              demand: input_boolean.ugkueche_fenster_heat_demand
-              valve: switch.ugkueche_heizventil_fenster
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ugkueche_thermostat_zkino
-            variables:
-              label: "UGKüche zum Kino"
-              demand: input_boolean.ugkueche_zkino_heat_demand
-              valve: switch.ugkueche_heizventil_zkino
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ugbad_thermostat
-            variables:
-              label: "UGBad"
-              demand: input_boolean.ugbad_heat_demand
-              valve: switch.ugbad_heizventil
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ugflur_thermostat
-            variables:
-              label: "UGFlur"
-              demand: input_boolean.ugflur_heat_demand
-              valve: switch.ugflur_heizventil
-      - type: heading
-        heading: Erdgeschoss
-        heading_style: title
-      - type: grid
-        columns: 2
-        square: false
+            show_icon: false
+            show_name: false
+            show_state: false
+            tap_action:
+              action: none
+            triggers_update: all
+            custom_fields:
+              h: |
+                [[[
+                  const rx = /^input_boolean\.(ug|kino)\w*_heat_demand$/;
+                  let n = 0, on = 0;
+                  Object.keys(states).forEach(function (k) {
+                    if (rx.test(k)) { n++; if (states[k].state === 'on') on++; }
+                  });
+                  return '<b style="font-size:14px">Untergeschoss</b><span style="font-size:12px;opacity:0.7;margin-left:10px">' + on + ' von ' + n + ' mit Bedarf</span>';
+                ]]]
+            styles:
+              card:
+                - padding: 6px 12px
+                - background: none
+                - box-shadow: none
+                - border: none
+              grid:
+                - grid-template-areas: '"h"'
+                - grid-template-columns: 1fr
+              custom_fields:
+                h:
+                  - justify-self: start
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ugwr_thermostat
+                variables:
+                  label: UGWR
+                  demand: input_boolean.ugwr_heat_demand
+                  valve: switch.ugwr_heizventil
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.kino_thermostat_fenster
+                variables:
+                  label: Kino Fenster
+                  demand: input_boolean.kino_fenster_heat_demand
+                  valve: switch.kino_heizventil_fenster
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.kino_thermostat_tuer
+                variables:
+                  label: Kino Tür
+                  demand: input_boolean.kino_tuer_heat_demand
+                  valve: switch.kino_heizventil_tuer
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ugkueche_thermostat_fenster
+                variables:
+                  label: UGKüche Fenster
+                  demand: input_boolean.ugkueche_fenster_heat_demand
+                  valve: switch.ugkueche_heizventil_fenster
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ugkueche_thermostat_zkino
+                variables:
+                  label: UGKüche zum Kino
+                  demand: input_boolean.ugkueche_zkino_heat_demand
+                  valve: switch.ugkueche_heizventil_zkino
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ugbad_thermostat
+                variables:
+                  label: UGBad
+                  demand: input_boolean.ugbad_heat_demand
+                  valve: switch.ugbad_heizventil
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ugflur_thermostat
+                variables:
+                  label: UGFlur
+                  demand: input_boolean.ugflur_heat_demand
+                  valve: switch.ugflur_heizventil
+      - type: vertical-stack
+        card_mod:
+          style: |
+            :host {
+              display: block;
+              padding: 8px;
+              border-radius: 16px;
+              background: color-mix(in srgb, #7fa88a 16%, transparent);
+            }
         cards:
           - type: custom:button-card
-            template: vsync_tile
-            entity: climate.egwk_thermostat
-            variables:
-              label: "EGWK"
-              demand: input_boolean.egwk_heat_demand
-              valve: switch.egwk_heizventil
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.egbad_thermostat
-            variables:
-              label: "EGBad"
-              demand: input_boolean.egbad_heat_demand
-              valve: switch.egbad_heizventil
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.egaz_thermostat
-            variables:
-              label: "EGAZ"
-              demand: input_boolean.egaz_heat_demand
-              valve: switch.egaz_heizventil
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.egwz_thermostat_fenster
-            variables:
-              label: "EGWZ Fenster"
-              demand: input_boolean.egwz_fenster_heat_demand
-              valve: switch.egwz_heizventil_fenster
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.egwz_thermostat_tuer
-            variables:
-              label: "EGWZ Tür"
-              demand: input_boolean.egwz_tuer_heat_demand
-              valve: switch.egwz_heizventil_tuer
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.egez_thermostat_fenster
-            variables:
-              label: "EGEZ Fenster"
-              demand: input_boolean.egez_fenster_heat_demand
-              valve: switch.egez_heizventil_fenster
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.egez_thermostat_tuer
-            variables:
-              label: "EGEZ Tür"
-              demand: input_boolean.egez_tuer_heat_demand
-              valve: switch.egez_heizventil_tuer
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.egkueche_thermostat
-            variables:
-              label: "EGKüche"
-              demand: input_boolean.egkueche_heat_demand
-              valve: switch.egkueche_heizventil
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.egflur_thermostat
-            variables:
-              label: "EGFlur"
-              demand: input_boolean.egflur_heat_demand
-              valve: switch.egflur_heizventil
-      - type: heading
-        heading: Obergeschoss
-        heading_style: title
-      - type: grid
-        columns: 2
-        square: false
+            show_icon: false
+            show_name: false
+            show_state: false
+            tap_action:
+              action: none
+            triggers_update: all
+            custom_fields:
+              h: |
+                [[[
+                  const rx = /^input_boolean\.eg\w*_heat_demand$/;
+                  let n = 0, on = 0;
+                  Object.keys(states).forEach(function (k) {
+                    if (rx.test(k)) { n++; if (states[k].state === 'on') on++; }
+                  });
+                  return '<b style="font-size:14px">Erdgeschoss</b><span style="font-size:12px;opacity:0.7;margin-left:10px">' + on + ' von ' + n + ' mit Bedarf</span>';
+                ]]]
+            styles:
+              card:
+                - padding: 6px 12px
+                - background: none
+                - box-shadow: none
+                - border: none
+              grid:
+                - grid-template-areas: '"h"'
+                - grid-template-columns: 1fr
+              custom_fields:
+                h:
+                  - justify-self: start
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.egwk_thermostat
+                variables:
+                  label: EGWK
+                  demand: input_boolean.egwk_heat_demand
+                  valve: switch.egwk_heizventil
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.egbad_thermostat
+                variables:
+                  label: EGBad
+                  demand: input_boolean.egbad_heat_demand
+                  valve: switch.egbad_heizventil
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.egaz_thermostat_raum
+                variables:
+                  label: EGAZ
+                  demand: input_boolean.egaz_heat_demand
+                  valve: switch.egaz_heizventil
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.egwz_thermostat_fenster
+                variables:
+                  label: EGWZ Fenster
+                  demand: input_boolean.egwz_fenster_heat_demand
+                  valve: switch.egwz_heizventil_fenster
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.egwz_thermostat_tuer
+                variables:
+                  label: EGWZ Tür
+                  demand: input_boolean.egwz_tuer_heat_demand
+                  valve: switch.egwz_heizventil_tuer
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.egez_thermostat_fenster
+                variables:
+                  label: EGEZ Fenster
+                  demand: input_boolean.egez_fenster_heat_demand
+                  valve: switch.egez_heizventil_fenster
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.egez_thermostat_tuer
+                variables:
+                  label: EGEZ Tür
+                  demand: input_boolean.egez_tuer_heat_demand
+                  valve: switch.egez_heizventil_tuer
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.egkueche_thermostat
+                variables:
+                  label: EGKüche
+                  demand: input_boolean.egkueche_heat_demand
+                  valve: switch.egkueche_heizventil
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.egflur_thermostat
+                variables:
+                  label: EGFlur
+                  demand: input_boolean.egflur_heat_demand
+                  valve: switch.egflur_heizventil
+      - type: vertical-stack
+        card_mod:
+          style: |
+            :host {
+              display: block;
+              padding: 8px;
+              border-radius: 16px;
+              background: color-mix(in srgb, #b09a7c 16%, transparent);
+            }
         cards:
           - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ogbad_thermostat
-            variables:
-              label: "OGBad"
-              demand: input_boolean.ogbad_heat_demand
-              valve: switch.ogbad_heizventil
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ogaz_thermostat
-            variables:
-              label: "OGAZ"
-              demand: input_boolean.ogaz_heat_demand
-              valve: switch.ogaz_heizventil
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ogvz_thermostat_fenster
-            variables:
-              label: "OGVZ Fenster"
-              demand: input_boolean.ogvz_fenster_heat_demand
-              valve: switch.ogvz_heizventil_fenster
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ogvz_thermostat_tuer
-            variables:
-              label: "OGVZ Tür"
-              demand: input_boolean.ogvz_tuer_heat_demand
-              valve: switch.ogvz_heizventil_tuer
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ogjz_thermostat_fenster
-            variables:
-              label: "OGJZ Fenster"
-              demand: input_boolean.ogjz_fenster_heat_demand
-              valve: switch.ogjz_heizventil_fenster
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ogjz_thermostat_tuer
-            variables:
-              label: "OGJZ Tür"
-              demand: input_boolean.ogjz_tuer_heat_demand
-              valve: switch.ogjz_heizventil_tuer
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ogsz_thermostat
-            variables:
-              label: "OGSZ"
-              demand: input_boolean.ogsz_heat_demand
-              valve: switch.ogsz_heizventil
-          - type: custom:button-card
-            template: vsync_tile
-            entity: climate.ogflur_thermostat
-            variables:
-              label: "OGFlur"
-              demand: input_boolean.ogflur_heat_demand
-              valve: switch.ogflur_heizventil
-      - type: heading
-        heading: Mindestdurchfluss
-        heading_style: title
-      - type: grid
-        columns: 3
-        square: false
+            show_icon: false
+            show_name: false
+            show_state: false
+            tap_action:
+              action: none
+            triggers_update: all
+            custom_fields:
+              h: |
+                [[[
+                  const rx = /^input_boolean\.og\w*_heat_demand$/;
+                  let n = 0, on = 0;
+                  Object.keys(states).forEach(function (k) {
+                    if (rx.test(k)) { n++; if (states[k].state === 'on') on++; }
+                  });
+                  return '<b style="font-size:14px">Obergeschoss</b><span style="font-size:12px;opacity:0.7;margin-left:10px">' + on + ' von ' + n + ' mit Bedarf</span>';
+                ]]]
+            styles:
+              card:
+                - padding: 6px 12px
+                - background: none
+                - box-shadow: none
+                - border: none
+              grid:
+                - grid-template-areas: '"h"'
+                - grid-template-columns: 1fr
+              custom_fields:
+                h:
+                  - justify-self: start
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ogbad_thermostat
+                variables:
+                  label: OGBad
+                  demand: input_boolean.ogbad_heat_demand
+                  valve: switch.ogbad_heizventil
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ogaz_thermostat
+                variables:
+                  label: OGAZ
+                  demand: input_boolean.ogaz_heat_demand
+                  valve: switch.ogaz_heizventil
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ogvz_thermostat_fenster
+                variables:
+                  label: OGVZ Fenster
+                  demand: input_boolean.ogvz_fenster_heat_demand
+                  valve: switch.ogvz_heizventil_fenster
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ogvz_thermostat_tuer
+                variables:
+                  label: OGVZ Tür
+                  demand: input_boolean.ogvz_tuer_heat_demand
+                  valve: switch.ogvz_heizventil_tuer
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ogjz_thermostat_fenster
+                variables:
+                  label: OGJZ Fenster
+                  demand: input_boolean.ogjz_fenster_heat_demand
+                  valve: switch.ogjz_heizventil_fenster
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ogjz_thermostat_tuer
+                variables:
+                  label: OGJZ Tür
+                  demand: input_boolean.ogjz_tuer_heat_demand
+                  valve: switch.ogjz_heizventil_tuer
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ogsz_thermostat_raum
+                variables:
+                  label: OGSZ
+                  demand: input_boolean.ogsz_heat_demand
+                  valve: switch.ogsz_heizventil
+              - type: custom:button-card
+                template: vsync_tile
+                entity: climate.ogflur_thermostat
+                variables:
+                  label: OGFlur
+                  demand: input_boolean.ogflur_heat_demand
+                  valve: switch.ogflur_heizventil
+      - type: vertical-stack
+        card_mod:
+          style: |
+            :host {
+              display: block;
+              padding: 8px;
+              border-radius: 16px;
+              background: color-mix(in srgb, #8a8a8a 16%, transparent);
+            }
         cards:
-          - type: custom:mushroom-entity-card
-            entity: switch.ogbad_heizventil_handtuch
-            name: OGBad Handtuch (dauerhaft offen)
-            icon: mdi:radiator
-            icon_color: "{{ 'blue' if is_state(entity, 'on') else 'disabled' }}"
-          - type: custom:mushroom-entity-card
-            entity: switch.ogbad_heizventil
-            name: OGBad (Bypass)
-            icon_color: "{{ 'blue' if is_state(entity, 'on') else 'disabled' }}"
-          - type: custom:mushroom-entity-card
-            entity: switch.egkueche_heizventil
-            name: EGKüche (Bypass)
-            icon_color: "{{ 'blue' if is_state(entity, 'on') else 'disabled' }}"
+          - type: custom:button-card
+            show_icon: false
+            show_name: false
+            show_state: false
+            tap_action:
+              action: none
+            custom_fields:
+              h: '<b style="font-size:14px">Mindestdurchfluss</b>'
+            styles:
+              card:
+                - padding: 6px 12px
+                - background: none
+                - box-shadow: none
+                - border: none
+              grid:
+                - grid-template-areas: '"h"'
+                - grid-template-columns: 1fr
+              custom_fields:
+                h:
+                  - justify-self: start
+          - type: custom:button-card
+            show_icon: false
+            show_name: false
+            show_state: false
+            tap_action:
+              action: none
+            triggers_update: all
+            custom_fields:
+              m: |
+                [[[
+                  const items = [];
+                  const cfg = states['sensor.heat_pump_valve_sync_config'];
+                  if (!cfg) return '<div style="font-size:12px;opacity:0.7">Warte auf die Einstellungen der Automatisierung (sensor.heat_pump_valve_sync_config).</div>';
+                  const A = cfg.attributes;
+                  const name = function (e) { return (states[e] && states[e].attributes.friendly_name) || e; };
+                  (A.bypass_valves || []).forEach(function (e) { items.push({ l: name(e), e: e, t: 'Bypass' }); });
+                  (A.always_open_valves || []).forEach(function (e) { items.push({ l: name(e), e: e, t: 'dauerhaft offen' }); });
+                  if (!items.length) return '<div style="font-size:12px;opacity:0.7">Keine Bypass- oder dauerhaft offenen Ventile eingetragen.</div>';
+                  let out = '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+                  items.forEach(function (x) {
+                    const st = states[x.e] ? states[x.e].state : 'unknown';
+                    let bg = 'rgba(128,128,128,0.12)', bd = 'rgba(128,128,128,0.35)', txt = 'zu';
+                    if (st === 'on') { bg = 'rgba(33,150,243,0.25)'; bd = 'rgba(33,150,243,0.9)'; txt = 'offen'; }
+                    else if (st !== 'off') { bg = 'rgba(244,67,54,0.25)'; bd = 'rgba(244,67,54,0.9)'; txt = 'nicht erreichbar'; }
+                    out += '<div style="flex:1 1 150px;padding:8px 10px;border-radius:12px;background:' + bg + ';border:1px solid ' + bd + '">'
+                      + '<div style="font-size:13px;font-weight:600">' + x.l + '</div>'
+                      + '<div style="font-size:11px;opacity:0.75">' + x.t + ' · ' + txt + '</div></div>';
+                  });
+                  return out + '</div>';
+                ]]]
+            styles:
+              card:
+                - padding: 8px 12px
+                - border-radius: 12px
+              grid:
+                - grid-template-areas: '"m"'
+                - grid-template-columns: 1fr
+              custom_fields:
+                m:
+                  - justify-self: stretch
+                  - text-align: left

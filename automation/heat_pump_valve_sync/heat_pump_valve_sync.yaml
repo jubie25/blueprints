@@ -1,6 +1,6 @@
 # =============================================================================
 # Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
-# Version: 1.2.0
+# Version: 1.3.0
 #
 # Die Raumregler (z. B. Generic Thermostat) schalten nicht mehr direkt die
 # Ventile, sondern virtuelle Schalter ("Bedarf", über einen Template-Schalter
@@ -13,7 +13,7 @@
 blueprint:
   name: Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
   description: |
-    **Version 1.2.0**
+    **Version 1.3.0**
 
     Sammelt den Wärmebedarf der Räume und öffnet die Heizkreisventile
     gemeinsam, solange die Wärmepumpe läuft. Ziel: weniger Verdichterstarts,
@@ -30,6 +30,12 @@ blueprint:
     - Eine Leistungsmessung der Wärmepumpe in Watt.
     - Die Bedarfsschalter zusätzlich als Liste (Abschnitt 1), damit
       Änderungen des Bedarfs die Automatisierung sofort auslösen.
+
+    **Monitoring:** Der Blueprint sendet seine Einstellungen als Ereignis
+    `heat_pump_valve_sync_config` und am Ende jedes Laufs das Ereignis
+    `heat_pump_valve_sync_run_end` mit der Laufdauer. Das optionale
+    Monitoring-Package liest beides, Einstellungen müssen dort nicht
+    doppelt gepflegt werden.
 
     **Wichtig:** Ist "Sync aktiv" aus, folgen die Raumventile direkt dem
     Bedarf. Bypass- und dauerhaft offene Ventile fasst der Blueprint dann
@@ -267,6 +273,8 @@ variables:
   invert_valves: !input invert_valves
   power_sensor: !input run_power_sensor
   threshold: !input run_threshold
+  on_delay: !input run_on_delay
+  off_delay: !input run_off_delay
   run_helper: !input run_helper
   release_helper: !input release_helper
   sync_enabled: !input sync_enabled
@@ -305,6 +313,9 @@ triggers:
   - trigger: homeassistant
     event: start
     id: start
+  - trigger: event
+    event_type: automation_reloaded
+    id: start
 
 actions:
   # 1. Lauferkennung
@@ -320,36 +331,23 @@ actions:
           - condition: trigger
             id: run_off
         sequence:
+          # Laufdauer melden: "Lauf aktiv" ging on_delay nach dem echten Start an,
+          # dieser Trigger kommt off_delay nach dem echten Ende. Den Versatz abziehen.
+          - if:
+              - condition: template
+                value_template: "{{ is_state(run_helper, 'on') }}"
+            then:
+              - event: heat_pump_valve_sync_run_end
+                event_data:
+                  duration_min: >-
+                    {{ ([((now() - (expand(run_helper) | first).last_changed).total_seconds()
+                          - (off_delay | float(0) - on_delay | float(0))) / 60, 0] | max) | round(1) }}
           - action: input_boolean.turn_off
             target:
               entity_id: !input run_helper
           - action: input_boolean.turn_off
             target:
               entity_id: !input release_helper
-      - conditions:
-          - condition: trigger
-            id: tick
-          - condition: template
-            value_template: >-
-              {% set p = states(power_sensor) %}
-              {% if p | is_number %}
-                {% set above = p | float(0) > threshold | float(0) %}
-                {{ above != is_state(run_helper, 'on') }}
-              {% else %}false{% endif %}
-        sequence:
-          - action: >-
-              {{ 'input_boolean.turn_on'
-                 if states(power_sensor) | float(0) > threshold | float(0)
-                 else 'input_boolean.turn_off' }}
-            target:
-              entity_id: !input run_helper
-          - if:
-              - condition: template
-                value_template: "{{ states(power_sensor) | float(0) <= threshold | float(0) }}"
-            then:
-              - action: input_boolean.turn_off
-                target:
-                  entity_id: !input release_helper
       - conditions:
           - condition: trigger
             id: start
@@ -368,13 +366,42 @@ actions:
                 target:
                   entity_id: !input run_helper
 
-  # 2. Zustand und Kennzahlen des Bedarfs
+  # 2. Einstellungen veröffentlichen (für das optionale Monitoring)
+  - if:
+      - condition: trigger
+        id:
+          - tick
+          - start
+    then:
+      - event: heat_pump_valve_sync_config
+        event_data:
+          version: "1.3.0"
+          rooms: "{{ rooms }}"
+          bypass_valves: "{{ bypass }}"
+          always_open_valves: "{{ always_open }}"
+          invert_valves: "{{ invert_valves }}"
+          power_sensor: "{{ power_sensor }}"
+          run_threshold: "{{ threshold }}"
+          run_on_delay: "{{ on_delay }}"
+          run_off_delay: "{{ off_delay }}"
+          run_helper: "{{ run_helper }}"
+          release_helper: "{{ release_helper }}"
+          sync_enabled: "{{ sync_enabled }}"
+          min_rooms: "{{ min_rooms }}"
+          min_pause: "{{ min_pause }}"
+          max_wait: "{{ max_wait }}"
+          max_release: "{{ max_release }}"
+
+  # 3. Zustand und Kennzahlen des Bedarfs
   - variables:
       now_ts: "{{ now().timestamp() }}"
       run_ts: "{{ (expand(run_helper) | first).last_changed.timestamp() }}"
       rel_ts: "{{ (expand(release_helper) | first).last_changed.timestamp() }}"
       running: "{{ is_state(run_helper, 'on') }}"
       rel_on: "{{ is_state(release_helper, 'on') }}"
+      # Bezug für Mindestpause und Wartezeit: Ende der letzten Freigabe oder
+      # des letzten Laufs, je nachdem, was später war (auch Läufe ohne Freigabe).
+      pause_ts: "{{ ([rel_ts, run_ts] | max) if not running else now_ts }}"
       metrics: >-
         {% set ns = namespace(count=0, oldest=0) %}
         {% for r in rooms %}
@@ -384,7 +411,7 @@ actions:
             {% if is_state(e, 'on') %}
               {% set room.on = true %}
               {% set ref = (expand(e) | first).last_changed.timestamp() %}
-              {% if not rel_on and rel_ts > ref %}{% set ref = rel_ts %}{% endif %}
+              {% if not rel_on and pause_ts > ref %}{% set ref = pause_ts %}{% endif %}
               {% set age = now_ts - ref %}
               {% if age > ns.oldest %}{% set ns.oldest = age %}{% endif %}
             {% endif %}
@@ -395,7 +422,7 @@ actions:
       dem_count: "{{ metrics[0] }}"
       dem_oldest: "{{ metrics[1] }}"
 
-  # 3. Schutz vor hängendem "Lauf aktiv"
+  # 4. Schutz vor hängendem "Lauf aktiv"
   - if:
       - condition: template
         value_template: "{{ running and (now_ts - run_ts) > max_run_h | float(4) * 3600 }}"
@@ -404,7 +431,7 @@ actions:
         target:
           entity_id: !input run_helper
 
-  # 4. Freigabe starten oder beenden
+  # 5. Freigabe starten oder beenden
   - variables:
       running: "{{ is_state(run_helper, 'on') }}"
       do_clear: >-
@@ -413,7 +440,7 @@ actions:
            or (now_ts - rel_ts) > max_release | float(180) * 60) }}
       do_release: >-
         {{ sync_on and not rel_on and not running and dem_count > 0
-           and (now_ts - rel_ts) >= min_pause | float(45) * 60
+           and (now_ts - pause_ts) >= min_pause | float(45) * 60
            and (dem_count >= min_rooms | float(2)
                 or dem_oldest >= max_wait | float(60) * 60) }}
   - choose:
@@ -428,7 +455,7 @@ actions:
             target:
               entity_id: !input release_helper
 
-  # 5. Sollzustand aller Ventile berechnen
+  # 6. Sollzustand aller Ventile berechnen
   - variables:
       running_now: "{{ is_state(run_helper, 'on') }}"
       rel_now: "{{ is_state(release_helper, 'on') }}"
@@ -457,7 +484,7 @@ actions:
         {% endif %}
         {{ [ns.all, ns.open] }}
 
-  # 6. Ventile abgleichen (nur Abweichungen, mit Pause dazwischen)
+  # 7. Ventile abgleichen (nur Abweichungen, mit Pause dazwischen)
   - repeat:
       for_each: "{{ desired[0] }}"
       sequence:

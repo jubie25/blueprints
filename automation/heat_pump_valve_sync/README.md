@@ -1,6 +1,6 @@
 # Wärmepumpe – Ventil-Synchronisation (Sammeln & Freigeben)
 
-**Version 1.2.0** · Home Assistant Blueprint (Automation)
+**Version 1.3.0** · Home Assistant Blueprint (Automation)
 
 Eine Wärmepumpe ohne Leistungsmodulation, die in der Übergangszeit mit kleinem Puffer und kleiner Heizlast betrieben wird, taktet: Der Puffer ist in Minuten voll, der Verdichter schaltet ab. Dieser Blueprint nutzt den Estrich als zusätzlichen Puffer. Er sammelt den Wärmebedarf der Räume und öffnet die Ventile aller Räume mit Bedarf **gemeinsam**, solange die Wärmepumpe läuft. Die Last steigt, die Läufe werden länger, und die Pausen dazwischen auch.
 
@@ -8,7 +8,7 @@ Eine Wärmepumpe ohne Leistungsmodulation, die in der Übergangszeit mit kleinem
 
 1. Jeder Raumregler (z. B. Generic Thermostat) schaltet nicht mehr das echte Ventil, sondern einen virtuellen Schalter. Dessen Zustand ist der **Bedarf** des Raums. Da der Generic Thermostat als Heizer nur `switch`-Entitäten zulässt, ist das ein Template-Schalter als Adapter vor einem `input_boolean`.
 2. Der Blueprint erkennt anhand einer Leistungsmessung, ob die Wärmepumpe läuft.
-3. **Freigabe:** Wenn mindestens *N* Räume Bedarf haben (oder der älteste Bedarf die *Höchstwartezeit* erreicht) und seit der letzten Freigabe die *Mindestpause* vergangen ist, werden die Ventile aller Räume mit Bedarf geöffnet. Der Puffer entleert sich, die Wärmepumpe startet.
+3. **Freigabe:** Wenn mindestens *N* Räume Bedarf haben (oder der älteste Bedarf die *Höchstwartezeit* erreicht) und seit dem Ende der letzten Freigabe bzw. des letzten Laufs (je nachdem, was später war) die *Mindestpause* vergangen ist, werden die Ventile aller Räume mit Bedarf geöffnet. Der Puffer entleert sich, die Wärmepumpe startet.
 4. Läuft die Wärmepumpe, bleiben alle Ventile mit Bedarf offen. Dazu öffnen die **Bypass-Ventile** (z. B. das Bad) für den Mindestdurchfluss. **Dauerhaft offene Ventile** (z. B. ein Handtuchheizkörper ohne eigenen Regler) bleiben offen, solange "Sync aktiv" an ist. Ist es aus, fasst der Blueprint Bypass- und dauerhaft offene Ventile nicht an, sie können manuell bedient werden.
 5. Mit dem Laufende endet die Freigabe, die Ventile schließen. Der Bedarf bleibt in den virtuellen Schaltern erhalten, bis der Raumregler ihn selbst beendet.
 
@@ -69,8 +69,8 @@ Die Ventile werden bei jeder Änderung eines Bedarfsschalters, bei Laufstart und
 - **Auflösung:** Bedarfsänderungen lösen sofort aus, sofern der Schalter in der Liste "Bedarfsschalter (für die Auslösung)" steht. Der Ablauf von Mindestpause und Höchstwartezeit wird im Sicherheitstakt erkannt, also bis zu so viele Minuten später, wie dort eingestellt sind.
 - **Traces:** Der Blueprint speichert 50 Traces statt der Standardwerte. Dank der Auslösung per Ereignis füllen sie sich nicht mehr im Minutentakt.
 - **Fehlerhafte Schaltbefehle:** Schlägt das Schalten eines Ventils fehl, werden die übrigen Ventile trotzdem geschaltet. Das Ventil wird beim nächsten Abgleich erneut versucht.
-- **Neustart von Home Assistant:** Die Wartezeiten beginnen danach von vorn. "Lauf aktiv" wird beim Start anhand der Leistungsmessung neu bestimmt.
-- **Warmwasser:** Heiz- und Warmwasserläufe werden nicht unterschieden. Bei einem reinen Warmwasserlauf öffnen die Ventile ohne Wirkung. Nach dem Lauf folgt die nächste Freigabe nach der Mindestpause.
+- **Neustart und Neuladen:** "Lauf aktiv" wird beim Start von Home Assistant und beim Neuladen der Automatisierungen anhand der Leistungsmessung neu bestimmt. Wartezeiten zählen ab den gespeicherten Zeitstempeln der Helfer weiter.
+- **Warmwasser:** Heiz- und Warmwasserläufe werden nicht unterschieden. Bei einem reinen Warmwasserlauf öffnen die Ventile ohne Wirkung. Die Mindestpause zählt auch nach einem solchen Lauf ohne Freigabe ab dessen Ende.
 - Der Blueprint ersetzt keine Schutzfunktionen der Wärmepumpe.
 
 ## Fehlersuche
@@ -83,12 +83,19 @@ Die Ventile werden bei jeder Änderung eines Bedarfsschalters, bei Laufstart und
 
 ## Monitoring (optional)
 
-Zwei zusätzliche Dateien zeigen den Zustand des Systems übersichtlich an. Sie ändern am Blueprint nichts und lesen nur vorhandene Helfer, Bedarfsschalter, Ventile und Climates.
+Zwei zusätzliche Dateien zeigen den Zustand des Systems übersichtlich an. Sie ändern am Blueprint nichts.
 
-- `heat_pump_valve_sync_monitor.yaml` (Package): Template-Sensoren für Status-Text, Anzahl Regler mit Bedarf, Alter des ältesten Bedarfs und Restzeit der Mindestpause, dazu Starts und Laufzeit seit Mitternacht (`history_stats`). **Einstellen:** Im Sensor "Pause Rest" den Wert `min_pause` auf die Mindestpause aus dem Blueprint setzen.
-- `heat_pump_valve_sync_dashboard.yaml` (Dashboard): Statuskopf, Chips (Sync, Lauf, Freigabe, Bedarf, Pause, Starts, Laufzeit) und je Etage ein Raster mit einer Kachel pro Regler (Raumtemperatur Ist/Soll, Zustand: heizt, wartet auf Freigabe, Ventil offen, ruht) sowie eine Zeile für die Mindestdurchfluss-Ventile. Benötigt die HACS-Karten `mushroom` und `button-card`. Den Inhalt im Raw-Konfigurationseditor eines neuen Dashboards einfügen.
-- Die Climates müssen dem Schema `climate.<raum>_thermostat[_fenster|_tuer|_zkino]` folgen, und die Leistungsmessung heißt im Dashboard `sensor.klima_waermepumpe_power`. Beides lässt sich in der Datei anpassen.
-- Die Entity-IDs der beiden `history_stats`-Sensoren leiten sich aus dem Namen ab (`sensor.wp_ventil_sync_starts_heute`, `sensor.wp_ventil_sync_laufzeit_heute`). Weichen sie bei dir ab, im Dashboard anpassen.
+**Einstellungen kommen aus der Automatisierung.** Der Blueprint sendet beim Start, beim Neuladen, beim Umschalten von "Sync aktiv" und im Sicherheitstakt das Ereignis `heat_pump_valve_sync_config` mit Zuordnung, Bypass- und dauerhaft offenen Ventilen, Helfern, Leistungsmessung, Schwelle, Verzögerungen, Mindestpause und Wartezeiten. Am Ende jedes Laufs sendet er `heat_pump_valve_sync_run_end` mit der Laufdauer in Minuten, bereinigt um Ein- und Ausschaltverzögerung. Das Monitoring liest nur diese Ereignisse, Einstellungen werden nicht doppelt gepflegt.
+
+- `heat_pump_valve_sync_monitor.yaml` (Package):
+  - `sensor.heat_pump_valve_sync_config`: speichert die Einstellungen als Attribute. Nach dem Einbinden sind sie spätestens nach einem Sicherheitstakt da, sofort mit "Automatisierungen neu laden".
+  - Status-Text, Regler mit Bedarf, ältester Bedarf, Restzeit der Mindestpause. Sie lesen Helfer, Zuordnung und Mindestpause aus der Konfiguration.
+  - `sensor.heat_pump_valve_sync_run_today`: Durchschnitt der Lauf-Dauer heute, Attribute `count`, `min`, `max`, `last_run`, `total`, `durations`. Um Mitternacht gehen die Tageswerte in `sensor.heat_pump_valve_sync_run_yesterday`.
+  - Starts und Laufzeit seit Mitternacht (`history_stats`). **Einstellen:** Dort steht als einzige feste Angabe die Entity-ID des Helfers "Lauf aktiv", weil `history_stats` keine Templates erlaubt.
+- `heat_pump_valve_sync_dashboard.yaml` (Dashboard): Statuskopf, Chips (Sync, Lauf, Freigabe, Bedarf, Pause, Starts, Laufzeit, Lauf-Dauer Ø/Min/Max, Vortag), Ventilübersicht "Ventile real", je Etage ein Raster mit einer Kachel pro Regler und die Mindestdurchfluss-Ventile. Benötigt die HACS-Erweiterungen `mushroom`, `button-card` und `card-mod`. Den Inhalt im Raw-Konfigurationseditor eines neuen Dashboards einfügen.
+  - Aus der Konfiguration gelesen: Leistungsmessung, Helfer "Lauf aktiv" und "Freigabe aktiv", Bypass- und dauerhaft offene Ventile (Namen aus dem Anzeigenamen der Entität).
+  - Fest eingetragen: die Raumkacheln (Climate, Bedarfsschalter, Ventil), die Kurznamen in "Ventile real" und der Helfer "Sync aktiv" im Sync-Chip, weil das Umschalten eine feste Entität braucht.
+  - Die Etagenzähler erkennen die Etage am Namensschema der Bedarfsschalter (`ug…`/`kino…`, `eg…`, `og…`).
 
 ## Dateien
 
